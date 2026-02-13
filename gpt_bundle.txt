@@ -1,4 +1,4 @@
-# FILE C:\Homepage\math-education-v4\src\app\index.js
+# FILE C:\Homepage\math-education-v5\src\app\index.js
 
 /*
 Mathematik
@@ -132,6 +132,7 @@ Shader führen aus.
 "use strict";
 
 import { WorldConfig } from "../config.js";
+import { Matrix3 } from "../math/Matrix3.js";
 import { MathState } from "../state/MathState.js";
 import { loadText } from "../loaders/loadText.js";
 import { createProgram } from "../gl/createProgram.js";
@@ -214,7 +215,7 @@ async function start() {
     	if (s.vector) {
 			scene.addGeometry(
 				VectorBuilder.build(s.vector, {
-					color: [0, 0, 0, 1]
+					color: [1,0,0,1]
 				})
 			);
 		}
@@ -222,7 +223,7 @@ async function start() {
 		// 🔥 Ergebnisvektor
 		if (s.resultVector) {
 			scene.addGeometry(
-				VectorBuilder.build(s.resultVector, { color: [1,0,1,1] })
+				VectorBuilder.build(s.resultVector, { color: [0,1,0,1] })
 			);
 		}
 
@@ -231,8 +232,29 @@ async function start() {
 	});
 
 	// 7) Experiment laden und laufen lassen (schreibt State)
-	const experiment = await loadExperiment("basisChange");
-	experiment.run(scene, state);
+
+	// Basis um 20 Grad gedreht
+	const ANZ_GRAD = 20;
+	const theta = (ANZ_GRAD / 180) * Math.PI;
+
+	// einfache lineare Abbildung (hier jetzt darstellung der neuen Basis mit alten Zahlen)
+    const linearMapMatrix = new Matrix3([
+        [Math.cos(theta), -Math.sin(theta), 0],
+        [Math.sin(theta),  Math.cos(theta), 0],
+        [0, 0, 1]
+    ]);
+
+    /*
+	// In Zahlen: 20 Grad gedreht gegen Uhrzeigersinn
+	const matrix = new Matrix3([
+		[ 0.940, -0.342, 0 ],
+		[ 0.342,  0.940, 0 ],
+		[ 0,      0,     1 ]
+	]);
+	*/
+
+	const experiment = await loadExperiment("linearMap");
+	experiment.run(state, linearMapMatrix);
 }
 
 // DOM Ready
@@ -255,7 +277,7 @@ python server.py
 
 */
 
-# FILE C:\Homepage\math-education-v4\src\builders\CoordinateSystemBuilder.js
+# FILE C:\Homepage\math-education-v5\src\builders\CoordinateSystemBuilder.js
 
 // src/builders/CoordinateSystemBuilder.js
 "use strict";
@@ -341,7 +363,7 @@ export class CoordinateSystemBuilder {
     }
 }
 
-# FILE C:\Homepage\math-education-v4\src\builders\CubeBuilder.js
+# FILE C:\Homepage\math-education-v5\src\builders\CubeBuilder.js
 
 // src/builders/CubeBuilder.js
 "use strict";
@@ -412,7 +434,7 @@ export class CubeBuilder {
   }
 }
 
-# FILE C:\Homepage\math-education-v4\src\builders\CubeWireframeBuilder.js
+# FILE C:\Homepage\math-education-v5\src\builders\CubeWireframeBuilder.js
 
 // src/builders/CubeWireframeBuilder.js
 "use strict";
@@ -472,7 +494,7 @@ export class CubeWireframeBuilder {
 	}
 }
 
-# FILE C:\Homepage\math-education-v4\src\builders\VectorBuilder.js
+# FILE C:\Homepage\math-education-v5\src\builders\VectorBuilder.js
 
 // src/builders/VectorBuilder.js
 export class VectorBuilder {
@@ -504,7 +526,7 @@ export class VectorBuilder {
   }
 }
 
-# FILE C:\Homepage\math-education-v4\src\controls\CameraController.js
+# FILE C:\Homepage\math-education-v5\src\controls\CameraController.js
 
 // src/controls/CameraController.js
 export class CameraController {
@@ -537,7 +559,7 @@ export class CameraController {
     }
 }
 
-# FILE C:\Homepage\math-education-v4\src\experiments\loadExperiment.js
+# FILE C:\Homepage\math-education-v5\src\experiments\loadExperiment.js
 
 // src/experiments/loadExperiment.js
 "use strict";
@@ -545,14 +567,17 @@ export class CameraController {
 export function loadExperiment(name) {
     switch (name) {
         case "basisChange":
-        return import("./basisChange/index.js").then((m) => m.default);
-
+        return import("./"+name+"/index.js").then((m) => m.default);
+        break
+        case "linearMap":
+        return import("./"+name+"/index.js").then((m) => m.default);
+        break
         default:
         return Promise.reject(new Error("Unbekanntes Experiment: " + name));
     }
 }
 
-# FILE C:\Homepage\math-education-v4\src\experiments\basisChange\index.js
+# FILE C:\Homepage\math-education-v5\src\experiments\basisChange\index.js
 
 // src/experiments/basisChange/index.js
 "use strict";
@@ -562,7 +587,7 @@ import { run } from "./run.js";
 
 export default { setup, run };
 
-# FILE C:\Homepage\math-education-v4\src\experiments\basisChange\run.js
+# FILE C:\Homepage\math-education-v5\src\experiments\basisChange\run.js
 
 // src/experiments/basisChange/run.js
 "use strict";
@@ -589,7 +614,7 @@ export function run(scene, state) {
 	// Das passiert automatisch ueber state.notify() -> Listener.
 }
 
-# FILE C:\Homepage\math-education-v4\src\experiments\basisChange\setup.js
+# FILE C:\Homepage\math-education-v5\src\experiments\basisChange\setup.js
 
 // src/experiments/basisChange/setup.js
 "use strict";
@@ -609,7 +634,7 @@ export function setup() {
   return { basisA, basisB, vector };
 }
 
-# FILE C:\Homepage\math-education-v4\src\experiments\LinearMap\index.js
+# FILE C:\Homepage\math-education-v5\src\experiments\LinearMap\index.js
 
 // src/experiments/LinearMap/index.js
 
@@ -618,25 +643,25 @@ import { run } from "./run.js";
 
 export default { setup, run };
 
-# FILE C:\Homepage\math-education-v4\src\experiments\LinearMap\run.js
+# FILE C:\Homepage\math-education-v5\src\experiments\LinearMap\run.js
 
 // src/experiments/LinearMap/run.js
 "use strict";
 
-export function run(scene, state) {
+export function run(state, linearMapMatrix) {
 
-    const data = this.setup();
+    const data = this.setup(linearMapMatrix);
 
     // NUR Bedeutung setzen
     state.setBasisA(data.basisA);
     state.setBasisB(data.basisB);
 
     state.setVector(data.vector);
-    state.setMatrix(data.matrix);
+    state.setMatrix(data.linearMapMatrix);
     state.setResultVector(data.result);
 }
 
-# FILE C:\Homepage\math-education-v4\src\experiments\LinearMap\setup.js
+# FILE C:\Homepage\math-education-v5\src\experiments\LinearMap\setup.js
 
 // src/experiments/LinearMap/run.js
 "use strict";
@@ -645,32 +670,26 @@ import { Basis } from "../../math/Basis.js";
 import { Vector3 } from "../../math/Vector3.js";
 import { Matrix3 } from "../../math/Matrix3.js";
 
-export function setup() {
+export function setup(linearMapMatrix) {
 
     const basisA = Basis.standard();
-    const basisB = Basis.standard(); // vorerst identisch
 
-    const vector = new Vector3(2, 1, 0);
+    const basisB = Basis.standard().transform(linearMapMatrix); // ANZ_GRAD drehen
 
-    // einfache lineare Abbildung (Streckung + Scherung)
-    const matrix = new Matrix3([
-        2, 1, 0,
-        0, 1, 0,
-        0, 0, 1
-    ]);
+    const vector = new Vector3(3, 4, 0);
 
-    const result = matrix.multiplyVector(vector);
+    const result = linearMapMatrix.multiplyVector(vector);
 
     return {
         basisA,
         basisB,
         vector,
-        matrix,
+        linearMapMatrix,
         result
     };
 }
 
-# FILE C:\Homepage\math-education-v4\src\geometry\Geometry.js
+# FILE C:\Homepage\math-education-v5\src\geometry\Geometry.js
 
 export class Geometry {
 	constructor({ positions, colors, primitiveType }) {
@@ -681,7 +700,7 @@ export class Geometry {
 	}
 }
 
-# FILE C:\Homepage\math-education-v4\src\gl\createProgram.js
+# FILE C:\Homepage\math-education-v5\src\gl\createProgram.js
 
 // src/gl/createProgram.js
 import { createShader } from "./createShader.js";
@@ -714,7 +733,144 @@ export function createProgram(gl, vsSource, fsSource) {
   };
 }
 
-# FILE C:\Homepage\math-education-v4\src\render\Camera.js
+# FILE C:\Homepage\math-education-v5\src\loaders\GeometryLoader.js
+
+/*
+Warum heisst es GeometryLoader.js, es tut doch nur json laden und kein Geometrie-Objekt?
+
+JSON ist Data pur.
+Unsere Geometry ist Data pur.
+Also sind sie konzeptionell dasselbe.
+
+*/
+
+export async function loadGeometry(url) {
+	const res = await fetch(url);
+	if (!res.ok) {
+		throw new Error("Failed to load geometry: " + url);
+	}
+	return await res.json();
+}
+
+# FILE C:\Homepage\math-education-v5\src\math\Basis.js
+
+import { Matrix3 } from "./Matrix3.js";
+import { Vector3 } from "./Vector3.js";
+
+export class Basis {
+    constructor(e1, e2, e3) {
+        this.e1 = e1;
+        this.e2 = e2;
+        this.e3 = e3;
+    }
+
+    toMatrix() {
+        return new Matrix3([
+            [this.e1.x, this.e2.x, this.e3.x],
+            [this.e1.y, this.e2.y, this.e3.y],
+            [this.e1.z, this.e2.z, this.e3.z],
+        ]);
+    }
+
+    // ------------------------
+    // Basis aus Matrix erzeugen
+    // (Spalten der Matrix = Basisvektoren)
+    // ------------------------
+    static fromMatrix(matrix) {
+        const m = matrix.m;
+
+        return new Basis(
+            new Vector3(m[0][0], m[1][0], m[2][0]), // erste Spalte
+            new Vector3(m[0][1], m[1][1], m[2][1]), // zweite Spalte
+            new Vector3(m[0][2], m[1][2], m[2][2])  // dritte Spalte
+        );
+    }
+
+    static standard() {
+        return new Basis(
+            new Vector3(1,0,0),
+            new Vector3(0,1,0),
+            new Vector3(0,0,1)
+        );
+    }
+
+    // ------------------------
+    // Basis mit Matrix transformieren
+    // (aktive lineare Abbildung)
+    // ------------------------
+    transform(matrix) {
+        return new Basis(
+            matrix.multiplyVector(this.e1),
+            matrix.multiplyVector(this.e2),
+            matrix.multiplyVector(this.e3)
+        );
+    }
+
+    // ------------------------
+    // Rotation um X-Achse
+    // ------------------------
+    rotateX(angleRad) {
+        const c = Math.cos(angleRad);
+        const s = Math.sin(angleRad);
+
+        const rot = (v) =>
+        new Vector3(
+            v.x,
+            c * v.y - s * v.z,
+            s * v.y + c * v.z
+        );
+
+        return new Basis(
+            rot(this.e1),
+            rot(this.e2),
+            rot(this.e3)
+        );
+    }
+
+    // ------------------------
+    // Rotation um Y-Achse
+    // ------------------------
+    rotateY(angleRad) {
+        const c = Math.cos(angleRad);
+        const s = Math.sin(angleRad);
+
+        const rot = (v) =>
+        new Vector3(
+            c * v.x + s * v.z,
+            v.y,
+            -s * v.x + c * v.z
+        );
+
+        return new Basis(
+            rot(this.e1),
+            rot(this.e2),
+            rot(this.e3)
+        );
+    }
+
+    // ------------------------
+    // Rotation um Z-Achse
+    // ------------------------
+    rotateZ(angleRad) {
+        const c = Math.cos(angleRad);
+        const s = Math.sin(angleRad);
+
+        const rot = (v) =>
+            new Vector3(
+                c * v.x - s * v.y,
+                s * v.x + c * v.y,
+                v.z
+            );
+
+        return new Basis(
+            rot(this.e1),
+            rot(this.e2),
+            rot(this.e3)
+        );
+    }
+}
+
+# FILE C:\Homepage\math-education-v5\src\render\Camera.js
 
 // render/Camera.js
 import { WorldConfig } from "../config.js";
@@ -741,7 +897,7 @@ class Camera {
 
 export { Camera };
 
-# FILE C:\Homepage\math-education-v4\src\render\Drawable.js
+# FILE C:\Homepage\math-education-v5\src\render\Drawable.js
 
 /**
  * CPU (JavaScript)
@@ -1210,7 +1366,7 @@ Instancing	                                    ⭐⭐⭐⭐⭐
 
 */
 
-# FILE C:\Homepage\math-education-v4\src\render\Projection.js
+# FILE C:\Homepage\math-education-v5\src\render\Projection.js
 
 "use strict";
 
@@ -1440,7 +1596,7 @@ export {
     createFrustumProjection
 };
 
-# FILE C:\Homepage\math-education-v4\src\render\Scene.js
+# FILE C:\Homepage\math-education-v5\src\render\Scene.js
 
 // src/render/Scene.js
 "use strict";
@@ -1540,16 +1696,22 @@ class Scene {
     }
 
     clear() {
+        // WICHTIG: logische Szene leeren (Drawables entfernen)
+        this.drawables = [];
+
+        // Bildschirm leeren (nur visuell)
         this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
     }
 }
 
 export { Scene };
 
-# FILE C:\Homepage\math-education-v4\src\state\MathState.js
+# FILE C:\Homepage\math-education-v5\src\state\MathState.js
 
 // src/state/MathState.js
 "use strict";
+
+import { Basis } from "../math/Basis.js";
 
 export class MathState {
     constructor() {
@@ -1596,7 +1758,11 @@ export class MathState {
     setMatrix(m) {
         this.matrix = m;
 
-        // 🔥 auch hier Konsistenz herstellen
+        // 🔥 BasisB aktualisieren
+        this.basisB = Basis.standard().transform(m);
+        // oder:
+        // this.basisB = Basis.fromMatrix(m);
+
         if (this.vector) {
             this.resultVector = m.multiplyVector(this.vector);
         }
@@ -1610,62 +1776,7 @@ export class MathState {
     }
 }
 
-# FILE C:\Homepage\math-education-v4\src\ui\Inspector.js
-
-"use strict";
-
-import { Vector3 } from "../math/Vector3.js";
-
-export function bindInspector(state) {
-    const vx = document.querySelector("#vx");
-    const vy = document.querySelector("#vy");
-    const vz = document.querySelector("#vz");
-
-    // -----------------------------
-    // READ SIDE: State → Inputs
-    // -----------------------------
-    state.onChange((s) => {
-        if (!s.vector) return;
-
-        // wichtig: nur setzen, nicht rechnen
-        vx.value = s.vector.x;
-        vy.value = s.vector.y;
-        vz.value = s.vector.z;
-    });
-
-    // -----------------------------
-    // WRITE SIDE: Inputs → State
-    // -----------------------------
-    function updateVectorFromInputs() {
-        const x = parseFloat(vx.value);
-        const y = parseFloat(vy.value);
-        const z = parseFloat(vz.value);
-
-        if ([x, y, z].some(Number.isNaN)) return;
-
-        state.setVector(new Vector3(x, y, z));
-    }
-
-    vx.addEventListener("input", updateVectorFromInputs);
-    vy.addEventListener("input", updateVectorFromInputs);
-    vz.addEventListener("input", updateVectorFromInputs);
-
-    // -----------------------------
-    // SEMANTIC ACTION: Step Button
-    // -----------------------------
-    //
-    // Semantic heisst hier: model-changing action oder auch: state-changing operation genannt
-    const stepBtn = document.querySelector("#step");
-    if (stepBtn) {
-        stepBtn.onclick = () => {
-            const v = state.vector;
-            if (!v) return;
-            state.setVector(new Vector3(v.x + 0.1, v.y, v.z));
-        };
-    }
-}
-
-# FILE C:\Homepage\math-education-v4\src\ui\LinearMapView.js
+# FILE C:\Homepage\math-education-v5\src\ui\LinearMapView.js
 
 // src/ui/LinearMapView.js
 "use strict";
@@ -1690,46 +1801,76 @@ export function bindLinearMapView(state) {
     state.onChange((s) => {
         if (!s.matrix || !s.vector || !s.resultVector) return;
 
+        const is2D =
+            s.matrix.m[0][2] === 0 &&
+            s.matrix.m[1][2] === 0 &&
+            s.matrix.m[2][0] === 0 &&
+            s.matrix.m[2][1] === 0 &&
+            s.matrix.m[2][2] === 1 &&
+            s.vector.z === 0;
+
         // ---------- MATRIX ----------
         mDiv.innerHTML = "";
-        s.matrix.values.forEach((val, i) => {
-            const inp = document.createElement("input");
-            inp.className = "cell";
-            inp.type = "number";
-            inp.step = "0.1";
-            inp.value = val;
-            inp.oninput = () => {
-                const v = [...s.matrix.values];
-                v[i] = parseFloat(inp.value);
-                state.setMatrix(new Matrix3(v));
-            };
-            mDiv.appendChild(inp);
-            if ((i + 1) % 3 === 0) mDiv.appendChild(document.createElement("br"));
-        });
 
-        // ---------- VECTOR ----------
+        const rows = is2D ? 2 : 3;
+        const cols = is2D ? 2 : 3;
+
+        for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < cols; col++) {
+
+                const inp = document.createElement("input");
+                inp.className = "cell";
+                inp.type = "number";
+                inp.step = "0.1";
+                inp.value = s.matrix.m[row][col];
+
+                inp.oninput = () => {
+
+                    // Deep copy der 2D-Matrix
+                    const newM = s.matrix.m.map(r => [...r]);
+
+                    newM[row][col] = parseFloat(inp.value);
+
+                    state.setMatrix(new Matrix3(newM));
+                };
+
+                mDiv.appendChild(inp);
+            }
+
+            mDiv.appendChild(document.createElement("br"));
+        }
+
+       // ---------- VECTOR ----------
         vDiv.innerHTML = "";
-        ["x", "y", "z"].forEach((k) => {
+
+        const dims = is2D ? ["x", "y"] : ["x", "y", "z"];
+
+        const inputs = [];
+
+        dims.forEach((k) => {
             const inp = document.createElement("input");
             inp.className = "cell";
             inp.type = "number";
             inp.step = "0.1";
             inp.value = s.vector[k];
+
+            inputs.push(inp);
+
             inp.oninput = () => {
-                const v = new Vector3(
-                    parseFloat(vDiv.children[0].value),
-                    parseFloat(vDiv.children[1].value),
-                    parseFloat(vDiv.children[2].value)
-                );
-                state.setVector(v);
+                const x = parseFloat(inputs[0].value);
+                const y = parseFloat(inputs[1].value);
+                const z = is2D ? 0 : parseFloat(inputs[2].value);
+
+                state.setVector(new Vector3(x, y, z));
             };
+
             vDiv.appendChild(inp);
             vDiv.appendChild(document.createElement("br"));
         });
 
         // ---------- RESULT ----------
         rDiv.innerHTML = "";
-        ["x", "y", "z"].forEach((k) => {
+        dims.forEach((k) => {
             const d = document.createElement("div");
             d.className = "cell";
             d.textContent = s.resultVector[k].toFixed(2);
