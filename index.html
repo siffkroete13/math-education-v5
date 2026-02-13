@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Lineare Abbildung</title>
+
+<link rel="shortcut icon" href="/favicon.ico" />
+
+<style>
+body {
+    margin: 0;
+    padding: 16px;
+    font-family: monospace;
+    background: #f5f5f5;
+}
+
+.container {
+    display: flex;
+    flex-flow: row wrap;
+    gap: 24px;
+    align-items: flex-start;
+    justify-content: space-between;
+}
+
+.view {
+    flex: 0 1 auto;
+}
+
+.algebra {
+    background: white;
+    padding: 12px;
+    border: 1px solid #ccc;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.matrix, .vector {
+    display: inline-block;
+}
+
+.cell {
+    width: 50px;
+    height: 28px;
+    border: 1px solid #999;
+    text-align: right;
+    padding: 2px 4px;
+}
+
+input.cell {
+    border: 1px solid #333;
+}
+
+.op {
+    font-size: 22px;
+    font-weight: bold;
+}
+
+canvas {
+    background: white;
+    border: 1px solid #ccc;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <!-- ALGEBRA VIEW -->
+    <div class="algebra view">
+        <div class="row">
+
+            <!-- MATRIX -->
+            <div class="matrix" id="matrixA"></div>
+
+            <div class="op">·</div>
+
+            <!-- VECTOR -->
+            <div class="vector" id="vectorV"></div>
+
+            <div class="op">=</div>
+
+            <!-- RESULT -->
+            <div class="vector" id="vectorR"></div>
+
+        </div>
+    </div>
+
+    <!-- GEOMETRIE -->
+    <div class="geometrie view">
+        <canvas id="meineWebGLCanvas" width="600" height="600"></canvas>
+    </div>
+
+</div>
+
+<script type="module" src="./src/app/index.js"></script>
+</body>
+</html><!--
+
+
+
+Starten mit:
+
+python -m http.server 8000
+
+und dann aufrufen:
+
+http://localhost:8000
+
+Wenn es nicht funktioniert dann mit dem python extra script:
+
+python server.py
+
+und dann
+
+http://localhost:8000
+
+
+-->

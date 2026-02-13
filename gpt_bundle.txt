@@ -1,0 +1,1812 @@
+# FILE C:\Homepage\math-education-v4\src\app\index.js
+
+/*
+Mathematik
+  ↓
+Koordinatensystem / Vektoren / Basen
+  ↓
+GeometryBuilder (Übersetzer)
+  ↓
+Geometry (positions, colors)
+  ↓
+Model_VOB (WebGL / GPU)
+  ↓
+Shader → Pixel
+
+ARCHITEKTURÜBERSICHT – MATHE / GEOMETRIE / RENDERING
+
+Dieses Projekt ist bewusst didaktisch aufgebaut.
+Ziel ist nicht „Engine-Benutzung“, sondern Verstehen:
+Vektoren, Matrizen, Räume, Projektion, Pixel.
+
+---------------------------------------------------
+1) MATHE (src/math)
+---------------------------------------------------
+Hier lebt die Bedeutung.
+
+- Vektoren
+- Basen
+- lineare Abbildungen
+- Basiswechsel (nicht zu verwechseln mit View-Matrix, die macht auch basiswechsel aber auf Infrastruktur-Ebene, das hier ist didaktisch)
+- explizite Rechnungen
+
+WICHTIG:
+Mathe weiss NICHTS von WebGL, Shadern oder Rendering.
+Mathe arbeitet nur mit Zahlen.
+
+---------------------------------------------------
+2) BUILDERS (src/builders)
+---------------------------------------------------
+Builder sind die Brücke zwischen Mathe und Darstellung.
+
+Aufgabe:
+- nehmen mathematische Konzepte
+- erzeugen daraus GEOMETRIE
+
+Beispiele:
+- CoordinateSystemBuilder → Achsen aus Basis
+- CubeBuilder → Würfel aus Vektoren
+- VectorBuilder → Pfeil aus Richtungsvektor
+
+Builder:
+- enthalten Mathematik
+- erzeugen nur Daten
+- geben Geometry-Objekte zurück
+
+Builder machen KEIN Rendering.
+
+---------------------------------------------------
+3) GEOMETRY (Datenformat)
+---------------------------------------------------
+Geometry ist ein reines dummes Datenobjekt:
+
+{
+  positions: [...],
+  colors: [...],
+  primitives: "LINES",
+  num_vertices: ...
+}
+
+Geometry:
+- enthält KEINE Bedeutung
+- enthält KEINE Transformation
+- ist nur „was gezeichnet werden soll“
+
+---------------------------------------------------
+4) RENDERING (src/render)
+---------------------------------------------------
+Rendering ist Darstellung, nicht Bedeutung.
+
+- Drawable:
+  - lädt Geometry auf die GPU
+  - führt drawArrays aus
+  - kennt keine Mathe-Bedeutung
+
+- Scene:
+  - orchestriert alles
+  - kennt Kamera & Projektion
+  - zeichnet Drawables
+
+- Camera:
+  - erzeugt View-Matrix
+
+- Projection:
+  - erzeugt Projektionsmatrix (Frustum)
+
+Rendering rechnet NICHT an der Geometrie.
+Es zeigt nur das Ergebnis.
+
+---------------------------------------------------
+5) SHADER (src/shaders)
+---------------------------------------------------
+Shader sind Ausführungsmaschinen.
+
+- nehmen Matrizen
+- wenden sie auf Vertices an
+- keine Logik, keine Bedeutung
+
+Shader sind absichtlich „dumm“.
+
+---------------------------------------------------
+6) WICHTIGE DESIGNENTSCHEIDUNG
+---------------------------------------------------
+Dieses Projekt verzichtet bewusst auf Model-Matrizen (diejenigen die das Objekt selber drehen, nicht die Welt.)
+in frühen Phasen.
+
+Stattdessen:
+- Geometrie wird explizit transformiert
+- jede Zahl ist sichtbar
+- jede Rechnung nachvollziehbar
+
+---------------------------------------------------
+MERKSATZ
+---------------------------------------------------
+Mathe erklärt.
+Builder formen.
+Rendering zeigt.
+Shader führen aus.
+
+*/
+
+// src/app/index.js
+"use strict";
+
+import { WorldConfig } from "../config.js";
+import { MathState } from "../state/MathState.js";
+import { loadText } from "../loaders/loadText.js";
+import { createProgram } from "../gl/createProgram.js";
+import { bindLinearMapView } from "../ui/LinearMapView.js";
+import { CoordinateSystemBuilder } from "../builders/CoordinateSystemBuilder.js";
+import { CubeWireframeBuilder } from "../builders/CubeWireframeBuilder.js";
+import { VectorBuilder } from "../builders/VectorBuilder.js";
+import { loadExperiment } from "../experiments/loadExperiment.js";
+import { Scene } from "../render/Scene.js";
+
+async function start() {
+
+	// 1) Canvas + WebGL
+	const canvas = document.querySelector("#meineWebGLCanvas");
+	const gl = canvas.getContext("webgl");
+	if (!gl) {
+		alert("WebGL nicht verfügbar");
+		return;
+	}
+
+	// 2) Shader laden
+	const [vShaderCode, fShaderCode] = await Promise.all([
+		loadText("/src/shaders/vShaderCode.glsl"),
+		loadText("/src/shaders/fShaderCode.glsl"),
+	]);
+
+	const programInfo = createProgram(gl, vShaderCode, fShaderCode);
+	gl.useProgram(programInfo.program);
+
+	// 3) Scene
+	const scene = new Scene(
+		canvas,
+		gl,
+		programInfo
+		/*
+		{
+			axes: CoordinateSystemBuilder.build(basisA, 1.0),
+			cube: CubeWireframeBuilder.build(1.0)
+		}
+		*/
+	);
+
+	// 4) State (Wahrheit)
+	const state = new MathState();
+
+	// 5) UI an State binden (nur lesen)
+	bindLinearMapView(state);
+
+	// 6) Rendering an State binden (nur lesen)
+	state.onChange((s) => {
+		scene.clear();
+
+		// optional: Raumreferenz
+		scene.addGeometry(CubeWireframeBuilder.build(WorldConfig.EXTENT));
+
+		// zwei Koordinatensysteme
+		if (s.basisA) {
+			scene.addGeometry(CoordinateSystemBuilder.build(
+									s.basisA,
+									WorldConfig.EXTENT,
+									WorldConfig.TICK_STEP,
+									WorldConfig.TICK_SIZE,
+									[1,0,0,1]
+				)
+			);
+		}
+
+		if (s.basisB) {
+			scene.addGeometry(CoordinateSystemBuilder.build(
+									s.basisB,
+									WorldConfig.EXTENT,
+									WorldConfig.TICK_STEP,
+									WorldConfig.TICK_SIZE,
+									[0,1,0,1]
+				)
+			);
+		}
+
+		// Der Vektor
+    	if (s.vector) {
+			scene.addGeometry(
+				VectorBuilder.build(s.vector, {
+					color: [0, 0, 0, 1]
+				})
+			);
+		}
+
+		// 🔥 Ergebnisvektor
+		if (s.resultVector) {
+			scene.addGeometry(
+				VectorBuilder.build(s.resultVector, { color: [1,0,1,1] })
+			);
+		}
+
+		scene.render();
+
+	});
+
+	// 7) Experiment laden und laufen lassen (schreibt State)
+	const experiment = await loadExperiment("basisChange");
+	experiment.run(scene, state);
+}
+
+// DOM Ready
+(function r(f) {
+  	/in/.test(document.readyState) ? setTimeout(() => r(f), 9) : f();
+})(start);
+
+/*
+Starten mit:
+
+python -m http.server 8000
+
+und dann aufrufen:
+
+http://localhost:8000
+
+Wenn es nicht funktioniert dann mit dem python extra script:
+
+python server.py
+
+*/
+
+# FILE C:\Homepage\math-education-v4\src\builders\CoordinateSystemBuilder.js
+
+// src/builders/CoordinateSystemBuilder.js
+"use strict";
+
+export class CoordinateSystemBuilder {
+
+   static build(basis, length = 1, tickStep = 1, tickSize = 0.05, color = [1,0,0,1]) {
+
+        const positions = [];
+        const colors = [];
+
+        function pushLine(a, b, color) {
+            positions.push(
+                a.x, a.y, a.z,
+                b.x, b.y, b.z
+            );
+            colors.push(...color, ...color);
+        }
+
+        const axes = [
+            { dir: basis.e1, ortho: basis.e2, color: color },
+            { dir: basis.e2, ortho: basis.e1, color: color },
+            { dir: basis.e3, ortho: basis.e1, color: color },
+        ];
+
+        for (const { dir, ortho, color } of axes) {
+
+            // Achse
+            pushLine(
+                {
+                    x: -dir.x * length,
+                    y: -dir.y * length,
+                    z: -dir.z * length
+                },
+                {
+                    x:  dir.x * length,
+                    y:  dir.y * length,
+                    z:  dir.z * length
+                },
+                color
+            );
+
+            // Ticks
+            for (let t = -length; t <= length; t += tickStep) {
+                if (t === 0) continue;
+
+                const center = {
+                    x: dir.x * t,
+                    y: dir.y * t,
+                    z: dir.z * t
+                };
+
+                const offset = {
+                    x: ortho.x * tickSize,
+                    y: ortho.y * tickSize,
+                    z: ortho.z * tickSize
+                };
+
+                pushLine(
+                    {
+                        x: center.x - offset.x,
+                        y: center.y - offset.y,
+                        z: center.z - offset.z
+                    },
+                    {
+                        x: center.x + offset.x,
+                        y: center.y + offset.y,
+                        z: center.z + offset.z
+                    },
+                    color
+                );
+            }
+        }
+
+        return {
+            primitives: "LINES",
+            num_dim: 3,
+            num_color: 4,
+            num_vertices: positions.length / 3,
+            positions,
+            colors
+        };
+    }
+}
+
+# FILE C:\Homepage\math-education-v4\src\builders\CubeBuilder.js
+
+// src/builders/CubeBuilder.js
+"use strict";
+
+/**
+ * CubeBuilder
+ * -----------
+ * Erzeugt die Geometrie (LINES) eines Würfels aus expliziter Mathematik.
+ *
+ * - KEIN WebGL
+ * - KEINE Shader
+ * - KEINE Kamera
+ * - NUR: Vektoren → Geometrie
+ */
+export class CubeBuilder {
+
+  /**
+   * center: { x, y, z }
+   * size: Kantenlänge
+   */
+  static build(center = { x: 0, y: 0, z: 0 }, size = 2) {
+
+    const h = size / 2;
+
+    // 8 Eckpunkte
+    const v = {
+      lbf: [-h, -h, -h],
+      rbf: [ h, -h, -h],
+      ltf: [-h,  h, -h],
+      rtf: [ h,  h, -h],
+
+      lbb: [-h, -h,  h],
+      rbb: [ h, -h,  h],
+      ltb: [-h,  h,  h],
+      rtb: [ h,  h,  h]
+    };
+
+    // Kanten
+    const edges = [
+      v.lbf, v.rbf,  v.rbf, v.rtf,  v.rtf, v.ltf,  v.ltf, v.lbf,
+      v.lbb, v.rbb,  v.rbb, v.rtb,  v.rtb, v.ltb,  v.ltb, v.lbb,
+      v.lbf, v.lbb,  v.rbf, v.rbb,  v.ltf, v.ltb,  v.rtf, v.rtb
+    ];
+
+    const positions = [];
+    for (const p of edges) {
+      positions.push(
+        p[0] + center.x,
+        p[1] + center.y,
+        p[2] + center.z
+      );
+    }
+
+    // ✅ WICHTIG: vec4-Farben
+    const colors = [];
+    for (let i = 0; i < positions.length / 3; i++) {
+      colors.push(0.2, 0.2, 0.2, 1.0);
+    }
+
+    return {
+      primitives: "LINES",
+      num_dim: 3,
+      num_color: 4,          // ← DAS war der Killer
+      num_vertices: positions.length / 3,
+      positions,
+      colors
+    };
+  }
+}
+
+# FILE C:\Homepage\math-education-v4\src\builders\CubeWireframeBuilder.js
+
+// src/builders/CubeWireframeBuilder.js
+"use strict";
+
+/**
+ * Erzeugt einen drahtgitter-Würfel (Wireframe)
+ * symmetrisch um den Ursprung.
+ *
+ * Der Würfel dient als visuelle Raumreferenz.
+ */
+export class CubeWireframeBuilder {
+
+	static build(size = 1) {
+
+		const s = size;
+
+		// 8 Ecken des Würfels
+		const v = [
+		[-s, -s, -s],
+		[ s, -s, -s],
+		[ s,  s, -s],
+		[-s,  s, -s],
+		[-s, -s,  s],
+		[ s, -s,  s],
+		[ s,  s,  s],
+		[-s,  s,  s],
+		];
+
+		// Kanten (jeweils 2 Eckpunkte)
+		const edges = [
+			[0,1],[1,2],[2,3],[3,0], // unten
+			[4,5],[5,6],[6,7],[7,4], // oben
+			[0,4],[1,5],[2,6],[3,7]  // vertikal
+		];
+
+		const positions = [];
+		const colors = [];
+
+		for (const [a, b] of edges) {
+			positions.push(...v[a], ...v[b]);
+
+			// Grau, leicht transparent
+			colors.push(
+				0.7, 0.7, 0.7, 1,
+				0.7, 0.7, 0.7, 1
+			);
+		}
+
+		return {
+			primitives: "LINES",
+			num_dim: 3,
+			num_color: 4,
+			num_vertices: positions.length / 3,
+			positions,
+			colors
+		};
+	}
+}
+
+# FILE C:\Homepage\math-education-v4\src\builders\VectorBuilder.js
+
+// src/builders/VectorBuilder.js
+export class VectorBuilder {
+
+  static build(vector, options = {}) {
+
+    const { color = [0, 0, 0, 1], scale = 1 } = options;
+
+    const positions = [
+      0, 0, 0,
+      vector.x * scale,
+      vector.y * scale,
+      vector.z * scale
+    ];
+
+    const colors = [
+      ...color,
+      ...color
+    ];
+
+    return {
+      primitives: "LINES",
+      num_dim: 3,
+      num_color: 4,
+      num_vertices: 2,
+      positions,
+      colors
+    };
+  }
+}
+
+# FILE C:\Homepage\math-education-v4\src\controls\CameraController.js
+
+// src/controls/CameraController.js
+export class CameraController {
+    constructor(camera, onChange) {
+        this.camera = camera;
+        this.onChange = onChange;
+
+        window.addEventListener("keydown", this.handleKey.bind(this));
+    }
+
+    handleKey(e) {
+        switch (e.key) {
+            case "ArrowLeft":
+                this.camera.angleY -= 5;
+                break;
+            case "ArrowRight":
+                this.camera.angleY += 5;
+                break;
+            case "ArrowUp":
+                this.camera.angleX -= 5;
+                break;
+            case "ArrowDown":
+                this.camera.angleX += 5;
+                break;
+            default:
+                return;
+        }
+
+        this.onChange(); // z.B. scene.render()
+    }
+}
+
+# FILE C:\Homepage\math-education-v4\src\experiments\loadExperiment.js
+
+// src/experiments/loadExperiment.js
+"use strict";
+
+export function loadExperiment(name) {
+    switch (name) {
+        case "basisChange":
+        return import("./basisChange/index.js").then((m) => m.default);
+
+        default:
+        return Promise.reject(new Error("Unbekanntes Experiment: " + name));
+    }
+}
+
+# FILE C:\Homepage\math-education-v4\src\experiments\basisChange\index.js
+
+// src/experiments/basisChange/index.js
+"use strict";
+
+import { setup } from "./setup.js";
+import { run } from "./run.js";
+
+export default { setup, run };
+
+# FILE C:\Homepage\math-education-v4\src\experiments\basisChange\run.js
+
+// src/experiments/basisChange/run.js
+"use strict";
+
+export function run(scene, state) {
+  	// this.setup() kommt aus index.js (default export {setup, run})
+  	// Weil nach const experiment = await loadExperiment("basisChange")
+	//
+  	// ist experiment === 	{
+  	//                        	setup: [Function],
+  	// 							run:   [Function]
+	// 						}
+	//
+	// und wenn experiment.run(..) aufruft dann ist this = experiment innerhalb von der funktion run(..).
+	// Das ist dynamische bindung von this, sehr mühsam in js!
+	const data = this.setup();
+
+	// WICHTIG: Experiment setzt NUR Bedeutung (State), nicht Rendering.
+	state.setBasisA(data.basisA);
+	state.setBasisB(data.basisB);
+	state.setVector(data.vector);
+
+	// Kein scene.render() hier!
+	// Das passiert automatisch ueber state.notify() -> Listener.
+}
+
+# FILE C:\Homepage\math-education-v4\src\experiments\basisChange\setup.js
+
+// src/experiments/basisChange/setup.js
+"use strict";
+
+import { Basis } from "../../math/Basis.js";
+import { Vector3 } from "../../math/Vector3.js";
+
+export function setup() {
+  const basisA = Basis.standard();
+
+  // schiefe Basis (nur Beispiel)
+  const ANZ_GRAD = -20;
+  const basisB = Basis.standard().rotateZ( (ANZ_GRAD / 180) * Math.PI); // ANZ_GRAD drehen
+
+  const vector = new Vector3(7, 4, 0);
+
+  return { basisA, basisB, vector };
+}
+
+# FILE C:\Homepage\math-education-v4\src\experiments\LinearMap\index.js
+
+// src/experiments/LinearMap/index.js
+
+import { setup } from "./setup.js";
+import { run } from "./run.js";
+
+export default { setup, run };
+
+# FILE C:\Homepage\math-education-v4\src\experiments\LinearMap\run.js
+
+// src/experiments/LinearMap/run.js
+"use strict";
+
+export function run(scene, state) {
+
+    const data = this.setup();
+
+    // NUR Bedeutung setzen
+    state.setBasisA(data.basisA);
+    state.setBasisB(data.basisB);
+
+    state.setVector(data.vector);
+    state.setMatrix(data.matrix);
+    state.setResultVector(data.result);
+}
+
+# FILE C:\Homepage\math-education-v4\src\experiments\LinearMap\setup.js
+
+// src/experiments/LinearMap/run.js
+"use strict";
+
+import { Basis } from "../../math/Basis.js";
+import { Vector3 } from "../../math/Vector3.js";
+import { Matrix3 } from "../../math/Matrix3.js";
+
+export function setup() {
+
+    const basisA = Basis.standard();
+    const basisB = Basis.standard(); // vorerst identisch
+
+    const vector = new Vector3(2, 1, 0);
+
+    // einfache lineare Abbildung (Streckung + Scherung)
+    const matrix = new Matrix3([
+        2, 1, 0,
+        0, 1, 0,
+        0, 0, 1
+    ]);
+
+    const result = matrix.multiplyVector(vector);
+
+    return {
+        basisA,
+        basisB,
+        vector,
+        matrix,
+        result
+    };
+}
+
+# FILE C:\Homepage\math-education-v4\src\geometry\Geometry.js
+
+export class Geometry {
+	constructor({ positions, colors, primitiveType }) {
+		this.positions = positions;
+		this.colors = colors;
+		this.primitiveType = primitiveType;
+		this.vertexCount = positions.length / 3;
+	}
+}
+
+# FILE C:\Homepage\math-education-v4\src\gl\createProgram.js
+
+// src/gl/createProgram.js
+import { createShader } from "./createShader.js";
+
+export function createProgram(gl, vsSource, fsSource) {
+  const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+  const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+  const program = gl.createProgram();
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const msg = gl.getProgramInfoLog(program);
+    gl.deleteProgram(program);
+    throw new Error(msg);
+  }
+
+  return {
+    program,
+    attribLocations: {
+      vertexPosition: gl.getAttribLocation(program, "aVertexPosition"),
+      vertexColor: gl.getAttribLocation(program, "aVertexColor"),
+    },
+    uniformLocations: {
+      projectionMatrix: gl.getUniformLocation(program, "uProjectionMatrix"),
+      modelViewMatrix: gl.getUniformLocation(program, "uModelViewMatrix"),
+    }
+  };
+}
+
+# FILE C:\Homepage\math-education-v4\src\render\Camera.js
+
+// render/Camera.js
+import { WorldConfig } from "../config.js";
+import * as mat4 from "../math/mat4.js";
+import { rad } from "../math/LenearAlgebra.js";
+
+class Camera {
+    constructor() {
+        this.angleX = 0;
+        this.angleY = 0;
+        this.distance = WorldConfig.EXTENT * 6;
+    }
+
+    getViewMatrix() {
+        const viewMatrix = mat4.create();
+
+        mat4.translate(viewMatrix, viewMatrix, [0, 0, -this.distance]);
+        mat4.rotate(viewMatrix, viewMatrix, rad(this.angleX), [1, 0, 0]);
+        mat4.rotate(viewMatrix, viewMatrix, rad(this.angleY), [0, 1, 0]);
+
+        return viewMatrix;
+    }
+}
+
+export { Camera };
+
+# FILE C:\Homepage\math-education-v4\src\render\Drawable.js
+
+/**
+ * CPU (JavaScript)
+│
+│  Geometry (positions, colors)
+│
+│  gl.bufferData(...)  ← KOPIE
+│
+▼
+GPU-Speicher (Buffer)
+│
+│  Attribute zeigen in Buffer hinein
+│
+▼
+Vertex-Shader
+│
+│  + Uniforms (global)
+│
+▼
+gl_Position
+
+GPU / WEBGL – KONZEPTUELLE ÜBERSICHT
+==================================
+
+Dieses Projekt benutzt WebGL bewusst didaktisch.
+Ziel ist zu verstehen:
+- welche Daten WO liegen
+- wann sie gesetzt werden
+- wie oft sie sich ändern
+- wer (CPU oder GPU) sie benutzt
+
+--------------------------------------------------
+1) ZWEI GETRENNTE WELTEN
+--------------------------------------------------
+
+CPU (JavaScript)
+- führt den Code aus
+- berechnet Mathematik
+- lädt Daten
+- entscheidet, WAS gezeichnet wird
+
+GPU (Grafikkarte)
+- führt Shader aus
+- verarbeitet Millionen Vertices / Pixel parallel
+- kennt KEINE JavaScript-Objekte
+- sieht nur rohe Zahlen
+
+CPU und GPU haben getrennten Speicher.
+Daten müssen explizit von CPU → GPU kopiert werden.
+
+--------------------------------------------------
+2) GPU-SPEICHER: BUFFER
+--------------------------------------------------
+
+Buffer sind Speicherbereiche auf der GPU.
+
+In diesem Projekt verwenden wir hauptsächlich:
+
+- ARRAY_BUFFER
+  → speichert Vertex-Daten
+  → z.B. Positionen, Farben, Normalen
+
+Beispiel:
+gl.createBuffer()
+gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW)
+
+WICHTIG:
+- bufferData kopiert Daten EINMAL von CPU → GPU
+- spätere Änderungen am JavaScript-Array haben KEINE Wirkung
+- Buffer bleiben auf der GPU, bis sie gelöscht werden
+
+Lebensdauer:
+- meist: beim Erzeugen eines Drawable
+- bleibt über viele Frames bestehen
+
+--------------------------------------------------
+3) ATTRIBUTE (vertex attributes)
+--------------------------------------------------
+
+Attribute sind GPU-Variablen,
+die sich PRO VERTEX unterscheiden.
+
+Typische Attribute:
+- Position eines Vertex
+- Farbe eines Vertex
+- Normalenvektor
+
+Im Vertex-Shader:
+attribute vec3 aVertexPosition;
+attribute vec3 aVertexColor;
+
+Eigenschaften:
+- ein Wert pro Vertex
+- Werte kommen aus Buffern
+- GPU iteriert automatisch über alle Vertices
+
+Verbindung Buffer → Attribut:
+gl.bindBuffer(...)
+gl.vertexAttribPointer(...)
+gl.enableVertexAttribArray(...)
+
+Lebensdauer:
+- Definition: einmal beim Setup
+- Nutzung: bei jedem Draw-Call
+- Wert: pro Vertex unterschiedlich
+
+--------------------------------------------------
+4) UNIFORMS
+--------------------------------------------------
+
+Uniforms sind GPU-Variablen,
+die für ALLE Vertices und Pixel gleich sind.
+
+Typische Uniforms:
+- Projektionsmatrix
+- View-Matrix
+- Zeit
+- Farbe
+- Lichtparameter
+
+Im Shader:
+uniform mat4 uProjectionMatrix;
+uniform mat4 uModelViewMatrix;
+
+Eigenschaften:
+- ein Wert pro Draw-Call
+- gleich für alle Vertices
+- wird von der CPU gesetzt
+
+Setzen in JavaScript:
+gl.uniformMatrix4fv(...)
+gl.uniform1f(...)
+gl.uniform3fv(...)
+
+Lebensdauer:
+- meist: pro Frame oder pro Objekt
+- Werte bleiben gültig, bis sie überschrieben werden
+
+--------------------------------------------------
+5) VERTEX-SHADER
+--------------------------------------------------
+
+Der Vertex-Shader läuft:
+
+- EINMAL PRO VERTEX
+- vollständig auf der GPU
+- parallel für alle Vertices
+
+Aufgaben:
+- liest Attribute (Position, Farbe, ...)
+- benutzt Uniforms (Matrizen, Parameter)
+- berechnet gl_Position
+
+WICHTIG:
+- Vertex-Shader kennt KEINE anderen Vertices
+- kein globaler Zustand
+- keine Schleifen über andere Vertices
+
+--------------------------------------------------
+6) FRAGMENT-SHADER
+--------------------------------------------------
+
+Der Fragment-Shader läuft:
+
+- EINMAL PRO PIXEL (Fragment)
+- nach der Rasterisierung
+- oft millionenfach pro Frame
+
+Aufgaben:
+- berechnet die Farbe eines Pixels
+- kann Uniforms lesen
+- kann interpolierte Werte aus dem Vertex-Shader lesen
+
+WICHTIG:
+- Fragment-Shader kennt KEINE Vertices
+- kennt nur den aktuellen Pixel
+
+--------------------------------------------------
+7) LEBENSDAUER-ÜBERSICHT
+--------------------------------------------------
+
+Pro Anwendung (einmal):
+- Shader kompilieren
+- Programme erstellen
+
+Pro Objekt (einmal):
+- Geometry erzeugen
+- Buffer anlegen
+- Drawable erstellen
+
+Pro Frame:
+- Clear Screen
+- Uniforms setzen (z.B. View/Projection)
+- drawArrays aufrufen
+
+Pro Vertex:
+- Vertex-Shader ausführen
+
+Pro Pixel:
+- Fragment-Shader ausführen
+
+--------------------------------------------------
+8) WICHTIGE MERKSÄTZE
+--------------------------------------------------
+
+- Buffer = GPU-Speicher
+- Attribute = Daten pro Vertex
+- Uniforms = Daten für alle Vertices
+- Vertex-Shader = pro Vertex
+- Fragment-Shader = pro Pixel
+- GPU rechnet, CPU denkt
+
+--------------------------------------------------
+9) DIDAKTISCHE ENTSCHEIDUNG DIESES PROJEKTS
+--------------------------------------------------
+
+- Mathematik findet auf der CPU statt
+- Geometrie wird explizit berechnet
+- Shader sind bewusst "dumm"
+- Keine versteckte Logik in der GPU (Optimierungen siehe unten)
+
+Ziel:
+Verstehen, nicht optimieren.
+
+ *
+ *
+
+ * Drawable
+ * --------
+ * Ein Drawable ist die GPU-Repräsentation von Geometry-DATEN.
+ *
+ * WICHTIG:
+ * - Drawable kennt KEINE Mathematik
+ * - Drawable kennt KEINE Bedeutung
+ * - Drawable kennt KEINE Kamera-Semantik
+ *
+ * Aufgabe:
+ *   CPU-Daten  → GPU-Speicher
+ *   GPU-Speicher → drawArrays
+
+ *
+
+ * Ein Drawable ist die Brücke zwischen CPU (JavaScript)
+ * und GPU (WebGL).
+ *
+ * Es nimmt reine GEOMETRIE-DATEN (Zahlen)
+ * und lädt sie in den Grafikspeicher.
+ *
+ * Drawable:
+ * - macht KEINE Mathematik
+ * - interpretiert KEINE Bedeutung
+ * - reicht Daten nur weiter
+ */
+
+"use strict";
+
+class Drawable {
+
+    /**
+     * Konstruktor
+     *
+     * gl          → Zugriff auf GPU
+     * programInfo → Shader + Locations (Uniforms, Attributes)
+     * geometry    → reine Daten (CPU-Speicher)
+     */
+    constructor(gl, programInfo, geometry) {
+
+        // WebGL-Kontext (unsere Verbindung zur GPU)
+        this.gl = gl;
+
+        // Enthält:
+        // - Shader-Programm
+        // - wo Uniforms liegen
+        // - wo Attribute liegen
+        this.programInfo = programInfo;
+
+        // Geometry lebt im CPU-Speicher (JavaScript-Objekt)
+        this.geometry = geometry;
+
+        // Referenzen auf GPU-Speicher (noch leer)
+        this.vertexBuffer = null;
+        this.colorBuffer = null;
+
+        // Welches primitive wird gezeichnet? (LINES, TRIANGLES, ...)
+        const primitiveName = geometry.primitives?.toUpperCase();
+        this.primitiveType =
+            gl[primitiveName] !== undefined
+                ? gl[primitiveName]
+                : gl.TRIANGLES;
+
+        // Wie viele Vertices sollen gezeichnet werden?
+        // Entweder explizit angegeben oder aus den Daten berechnet
+        this.vertexCount =
+            geometry.num_vertices ??
+            (geometry.positions.length / geometry.num_dim);
+
+        // JETZT: Daten von CPU → GPU kopieren
+        this.initBuffers();
+    }
+
+    /**
+     * initBuffers
+     * -----------
+     * Dieser Schritt ist extrem wichtig:
+     *
+     * Hier verlassen die Daten endgültig JavaScript
+     * und landen im GPU-Speicher.
+     *
+     * Danach:
+     * - JavaScript kann die Daten ändern,
+     *   aber die GPU merkt davon NICHTS.
+     */
+    initBuffers() {
+        const gl = this.gl;
+
+        // ===============================
+        // POSITIONS-BUFFER
+        // ===============================
+
+        // 1) GPU-Speicher anlegen
+        this.vertexBuffer = gl.createBuffer();
+
+        // 2) Sagen: dieser Buffer ist jetzt ein ARRAY_BUFFER
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+
+        // 3) CPU → GPU Kopie
+        gl.bufferData(
+            gl.ARRAY_BUFFER,
+            new Float32Array(this.geometry.positions),
+            gl.STATIC_DRAW
+        );
+
+        // ===============================
+        // COLOR-BUFFER (optional)
+        // ===============================
+        if (
+            this.geometry.colors &&
+            this.geometry.colors.length ===
+                this.vertexCount * this.geometry.num_color
+        ) {
+            this.colorBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
+
+            gl.bufferData(
+                gl.ARRAY_BUFFER,
+                new Float32Array(this.geometry.colors),
+                gl.STATIC_DRAW
+            );
+        }
+    }
+
+    /**
+     * draw
+     * ----
+     * Dieser Aufruf zeichnet das Objekt.
+     *
+     * WICHTIG:
+     * - draw() läuft PRO FRAME
+     * - Buffer liegen bereits auf der GPU
+     * - jetzt werden nur noch ZEIGER gesetzt
+     */
+    draw(projectionMatrix, viewMatrix) {
+        const gl = this.gl;
+        const prog = this.programInfo;
+
+        // ===============================
+        // UNIFORMS
+        // ===============================
+        // Uniforms sind globale Werte:
+        // - gleich für ALLE Vertices
+        // - werden einmal pro Draw gesetzt
+
+        gl.uniformMatrix4fv(
+            prog.uniformLocations.projectionMatrix,
+            false,
+            projectionMatrix
+        );
+
+        gl.uniformMatrix4fv(
+            prog.uniformLocations.modelViewMatrix,
+            false,
+            viewMatrix
+        );
+
+        // ===============================
+        // POSITION-ATTRIBUTE
+        // ===============================
+        // Attribute sind PRO VERTEX unterschiedlich
+
+        // 1) richtigen Buffer auswählen
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+
+        // 2) erklären, wie die Daten gelesen werden sollen
+        gl.vertexAttribPointer(
+            prog.attribLocations.vertexPosition,
+            this.geometry.num_dim,   // z.B. vec3
+            gl.FLOAT,
+            false,
+            0,
+            0
+        );
+
+        // 3) Attribut aktivieren
+        gl.enableVertexAttribArray(
+            prog.attribLocations.vertexPosition
+        );
+
+        // ===============================
+        // COLOR-ATTRIBUTE
+        // ===============================
+        if (this.colorBuffer) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
+            gl.vertexAttribPointer(
+                prog.attribLocations.vertexColor,
+                this.geometry.num_color,
+                gl.FLOAT,
+                false,
+                0,
+                0
+            );
+            gl.enableVertexAttribArray(
+                prog.attribLocations.vertexColor
+            );
+        } else {
+            // Keine Farben pro Vertex:
+            // → eine konstante Farbe für alle Vertices
+            gl.disableVertexAttribArray(
+                prog.attribLocations.vertexColor
+            );
+            gl.vertexAttrib4fv(
+                prog.attribLocations.vertexColor,
+                this.geometry.colors
+            );
+        }
+
+        // ===============================
+        // DRAW CALL
+        // ===============================
+        // JETZT arbeitet die GPU:
+        // - Vertex-Shader wird pro Vertex ausgeführt
+        // - Fragment-Shader pro Pixel
+
+        gl.drawArrays(
+            this.primitiveType,
+            0,
+            this.vertexCount
+        );
+    }
+}
+
+export { Drawable };
+
+/*
+Konkrete Performance-Gewinne (realistisch)
+
+Maßnahme	                                    Gewinn
+
+Buffer nur einmal erstellen	                    ⭐⭐
+
+Draw Calls reduzieren	                        ⭐⭐⭐
+
+CPU → GPU Mathe verschieben	                    ⭐⭐⭐⭐
+
+Instancing	                                    ⭐⭐⭐⭐⭐
+
+*/
+
+# FILE C:\Homepage\math-education-v4\src\render\Projection.js
+
+"use strict";
+
+/*
+=====================================================
+PROJECTION.JS – DARSTELLUNGS-MATHE (KAMERA / SICHT)
+=====================================================
+
+WICHTIGER KONTEXT (DIDAKTISCH):
+
+Dieses Modul gehört bewusst NICHT in /math.
+
+Warum?
+- Die Mathematik hier beschreibt KEINE objektive Welt
+- Sie beschreibt, wie eine KAMERA die Welt sieht
+- Ohne Rendering (Bildschirm, Sichtkegel, Clipping)
+  ergibt diese Mathematik keinen Sinn
+
+Merksatz:
+→ Projektion ist keine Welt-Mathematik
+→ Projektion ist Darstellungs-Mathematik
+
+-----------------------------------------------------
+Pipeline-Kontext:
+
+Weltkoordinaten
+   ↓ (View-Matrix: Welt → Kamera)
+Kamerakoordinaten
+   ↓ (Projektionsmatrix: Kamera → Clip Space)
+Clip Space (-1 .. 1)
+   ↓ (Viewport)
+Bildschirm
+
+Dieses Modul liefert AUSSCHLIESSLICH:
+→ Kamerakoordinaten → Clip Space
+=====================================================
+*/
+
+// ===================================================
+// PERSPEKTIVISCHE PROJEKTION
+// ===================================================
+/*
+Dies ist die klassische Perspective Projection Matrix.
+
+Was sie leistet:
+
+- Alle Punkte im Sichtkegel (Frustum) der Kamera
+  werden in den normierten Raum [-1, 1] abgebildet
+- Das Clipping-Volume ist ein Würfel von -1 bis +1
+- Das Aspect Ratio (Breite / Höhe) wird korrekt berücksichtigt
+- z-Werte werden ebenfalls in [-1, 1] abgebildet
+  (für Tiefentest & Clipping)
+
+WICHTIG:
+Diese Matrix geht davon aus, dass:
+- die Kamera im Ursprung sitzt
+- die Kamera entlang der -Z-Achse schaut
+- die View-Matrix diese Voraussetzungen bereits hergestellt hat
+
+Die ZENTRIERUNG der Kamera (Apex des Frustums)
+passiert NICHT hier, sondern in der View-Matrix!
+
+Diese Funktion ist also NUR für:
+→ zentrierte Kamera
+→ standardisierte Kamerakoordinaten
+*/
+
+function createPerspectiveProjection(gl) {
+
+    // ------------------------------------------------
+    // Kamera-Parameter (bewusst hier, nicht abstrahiert)
+    // ------------------------------------------------
+
+    // Field of View (vertikal), in Radiant
+    const fov = 20 * (Math.PI / 180);
+
+    // Aspect Ratio des Bildschirms
+    // → DAS ist Darstellungsabhängigkeit
+    const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+
+    // Near- und Far-Plane des Frustums
+    const zNear = 0.3;
+    const zFar  = 100.0;
+
+    // ------------------------------------------------
+    // Mathematische Vorbereitung
+    // ------------------------------------------------
+
+    const angle = fov / 2.0;
+
+    /*
+    ACHTUNG (WICHTIG UND DIDAKTISCH):
+
+    Die Matrix ist im COLUMN-MAJOR Format gespeichert,
+    wie es WebGL (und OpenGL) erwarten.
+
+    Das bedeutet:
+    - Die "Spalten" der mathematischen Matrix
+      stehen hier untereinander im Array
+    - Beim Lesen wirkt die Matrix "transponiert"
+
+    Das ist KEIN Denkfehler, sondern ein Speicherlayout-Thema.
+    */
+
+    // Dies ist die komplette Projektions-Matrix (Perspective-Projextion-Matrix). Alle Koordinaten der Vertices im Frustum werden richtig
+    // in den Bereich von -1 zu 1 projeziert. Auch die Tatsache, dass aspect ration nicht gleich 1 ist wird beachtet durch diese Matrix.
+    // Auch die z-Koordinaten werden zwischen -1 und 1 projeziert (für allfälliges weg clippen oder so).
+    // Anfangs dachte ich, dass was fehlt, z.B. die Zentrierung von apex (Kamera) oder so. Aber diese Funktion ist nur für für zentrierte
+    // Kamera zugelassen.
+    // Dann dachte ich auch, dass ja das Ganze auf ein clipping volume projeziert werden muss (clipping volume: Würfel von -1 zu 1) und dass
+    // das dem Aspect Ratio wiederspricht, weil aspect ratio kann auch nicht gleich 1 sein. Aber es wird in den Formeln ebenfalls
+    // beachtet wie ich raus fand.
+    const projectionMatrix = [
+
+        // Spalte 0
+        1.0 / (aspect * Math.tan(angle)),  0.0,  0.0,   0.0,
+
+        // Spalte 1
+        0.0,  1.0 / Math.tan(angle),        0.0,   0.0,
+
+        // Spalte 2
+        0.0,  0.0,  (zFar + zNear) / (zNear - zFar),  -1.0,
+
+        // Spalte 3
+        0.0,  0.0,  (2 * zFar * zNear) / (zNear - zFar),  0.0
+    ];
+
+    return projectionMatrix;
+}
+
+// ===================================================
+// ORTHOGRAFISCHE PROJEKTION
+// ===================================================
+/*
+Orthografische Projektion:
+
+- KEINE Perspektive
+- Parallele Kanten bleiben parallel
+- Keine Tiefenverzerrung
+- Oft verwendet für:
+  - CAD
+  - technische Zeichnungen
+  - UI-Overlays
+  - Debug-Ansichten
+
+Hier wird ein Quader direkt
+auf den Clip-Würfel [-1,1] abgebildet.
+*/
+
+function createOrthographicProjection(left, right, bottom, top, zNear, zFar) {
+
+    const orthographicMatrix = [
+
+        // Spalte 0
+        2.0 / (right - left),  0.0,  0.0,  0.0,
+
+        // Spalte 1
+        0.0,  2.0 / (top - bottom),  0.0,  0.0,
+
+        // Spalte 2
+        0.0,  0.0,  -2.0 / (zFar - zNear),  0.0,
+
+        // Spalte 3
+        -(right + left) / (right - left),
+        -(top + bottom) / (top - bottom),
+        -(zFar + zNear) / (zFar - zNear),
+        1.0
+    ];
+
+    return orthographicMatrix;
+}
+
+// ===================================================
+// FRUSTUM-PROJEKTION (ALLGEMEIN)
+// ===================================================
+/*
+Allgemeine Frustum-Projektion:
+
+- Left / Right / Top / Bottom können unterschiedlich sein
+- Kamera muss evtl. NICHT zentriert sein
+- Grundlage für Off-Center-Projektionen
+- Stereo-Rendering
+- Shadow Maps
+
+HINWEIS:
+Falls das Frustum nicht symmetrisch ist,
+muss zusätzlich eine View-Transformation erfolgen,
+die den Apex (Kamera) ins Koordinatenzentrum verschiebt.
+*/
+
+function createFrustumProjection(left, right, bottom, top, zNear, zFar) {
+    // Diese Funktion macht geanu das Gleiche wie createPerspectiveProjection(..) einfach mit anderen Argumenten.
+	// Left und Right müssen gleich lang sein. Und auch top, bottom aber nur hier, im Allgemeinen müsste diese Funktion das auch beachten.
+	// Falls die Kamera nicht im Zentrum steht (d.h. -left != right oder -bottom != top) dann müsste man die Funktion noch fertig schreiben.
+	// In einem solchen Fall müsste man dann noch die Zentrierung der Kamera ausführen (Translate the apex of the frustum to the origin).
+	// Die zentrierung der Kamera to the origin (apex ist die Kamera) kann man sich so vorstellen: Ist as apex nach rechts (x-Achse) v
+    // erschoben, so schiebe man das Koordinatensystem auch nach Rechts Richtung der x-Achse so dass der Koordinaten-Ursprung auf das
+    // Apex zu liegen kommt. Als Folge verschieben sich die Koordinaten der einzelnen Vertices nach "Links" der x-Achse nach, also ins Minus.
+    // Das Gleiche tue man natürlich für Y-Achse falls nötig.
+	// Das "nach Rechts" könnte natürlich auch "nach Links" sein, das war nur ein Beispiel o.B.d.A. sozusagen.
+    return [
+
+        // Spalte 0
+        (2 * zNear) / (right - left),  0.0,  0.0,  0.0,
+
+        // Spalte 1
+        0.0,  (2 * zNear) / (top - bottom),  0.0,  0.0,
+
+        // Spalte 2
+        (right + left) / (right - left),
+        (top + bottom) / (top - bottom),
+        -(zFar + zNear) / (zFar - zNear),
+        -1.0,
+
+        // Spalte 3
+        0.0,  0.0,  -(2 * zFar * zNear) / (zFar - zNear),  0.0
+    ];
+}
+
+// ===================================================
+// EXPORTS
+// ===================================================
+
+export {
+    createPerspectiveProjection,
+    createOrthographicProjection,
+    createFrustumProjection
+};
+
+# FILE C:\Homepage\math-education-v4\src\render\Scene.js
+
+// src/render/Scene.js
+"use strict";
+
+import { Drawable } from "./Drawable.js";
+import { Camera } from "./Camera.js";
+import { CameraController } from "../controls/CameraController.js";
+import { createPerspectiveProjection } from "./Projection.js";
+
+/**
+ * Scene
+ * -----
+ * Orchestriert das Rendern.
+ *
+ * Verantwortung:
+ * - besitzt den WebGL-Kontext
+ * - besitzt das Shader-Programm (programInfo)
+ * - hält Drawables (GPU-Repräsentationen von Geometrie)
+ * - benutzt Kamera (View-Matrix)
+ * - benutzt Projektion (Projection-Matrix)
+ *
+ * Bewusst NICHT hier:
+ * - Shader laden
+ * - Shader kompilieren
+ * - fetch / Dateipfade
+ * - Geometrie-Erzeugung
+ * - Lineare Algebra (außer Übergabe von Matrizen)
+ */
+class Scene {
+    constructor(canvas, gl, programInfo, geometries) {
+
+        // -------------------------------------------------------------------------
+        // Kontext
+        // -------------------------------------------------------------------------
+        this.canvas = canvas;
+        this.gl = gl;
+
+        // -------------------------------------------------------------------------
+        // Shader-Programm (fertig übergeben!)
+        // -------------------------------------------------------------------------
+        this.programInfo = programInfo;
+        this.gl.useProgram(this.programInfo.program);
+
+        // -------------------------------------------------------------------------
+        // Kamera (View)
+        // -------------------------------------------------------------------------
+        this.camera = new Camera();
+
+        // -------------------------------------------------------------------------
+        // Drawables (GPU-Objekte)
+        // -------------------------------------------------------------------------
+        this.drawables = [];
+
+        if(geometries) {
+            for (const key of Object.keys(geometries)) {
+                this.drawables.push(
+                    new Drawable(this.gl, this.programInfo, geometries[key])
+                );
+            }
+        }
+
+        this.controller = new CameraController(
+            this.camera,
+            () => this.render()
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Add Drawables (GPU-Objekte)
+    // -------------------------------------------------------------------------
+    addGeometry(geometrie) {
+        this.drawables.push(new Drawable(this.gl, this.programInfo, geometrie));
+    }
+
+    // ---------------------------------------------------------------------------
+    // Render
+    // ---------------------------------------------------------------------------
+    render() {
+        const gl = this.gl;
+
+        // gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+        // Projektion (Frustum → Clip Space)
+        const projectionMatrix = createPerspectiveProjection(gl);
+
+        // View (Welt → Kamera)
+        const viewMatrix = this.camera.getViewMatrix();
+
+        // Clear
+        gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        // Draw Calls
+        for (const drawable of this.drawables) {
+            drawable.draw(projectionMatrix, viewMatrix);
+        }
+    }
+
+    clear() {
+        this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
+    }
+}
+
+export { Scene };
+
+# FILE C:\Homepage\math-education-v4\src\state\MathState.js
+
+// src/state/MathState.js
+"use strict";
+
+export class MathState {
+    constructor() {
+        this.basisA = null;
+        this.basisB = null;
+        this.vector = null;
+        this.matrix = null;
+        this.resultVector = null;
+
+        this.listeners = [];
+    }
+
+    onChange(fn) {
+        this.listeners.push(fn);
+    }
+
+    notify() {
+        for (const fn of this.listeners) {
+            fn(this);
+        }
+    }
+
+    setBasisA(basis) {
+        this.basisA = basis;
+        this.notify();
+    }
+
+    setBasisB(basis) {
+        this.basisB = basis;
+        this.notify();
+    }
+
+    setVector(v) {
+        this.vector = v;
+
+        // 🔥 HIER die Abbildung
+        if (this.matrix) {
+            this.resultVector = this.matrix.multiplyVector(v);
+        }
+
+        this.notify();
+    }
+
+    setMatrix(m) {
+        this.matrix = m;
+
+        // 🔥 auch hier Konsistenz herstellen
+        if (this.vector) {
+            this.resultVector = m.multiplyVector(this.vector);
+        }
+
+        this.notify();
+    }
+
+    setResultVector(v) {
+        this.resultVector = v;
+        this.notify();
+    }
+}
+
+# FILE C:\Homepage\math-education-v4\src\ui\Inspector.js
+
+"use strict";
+
+import { Vector3 } from "../math/Vector3.js";
+
+export function bindInspector(state) {
+    const vx = document.querySelector("#vx");
+    const vy = document.querySelector("#vy");
+    const vz = document.querySelector("#vz");
+
+    // -----------------------------
+    // READ SIDE: State → Inputs
+    // -----------------------------
+    state.onChange((s) => {
+        if (!s.vector) return;
+
+        // wichtig: nur setzen, nicht rechnen
+        vx.value = s.vector.x;
+        vy.value = s.vector.y;
+        vz.value = s.vector.z;
+    });
+
+    // -----------------------------
+    // WRITE SIDE: Inputs → State
+    // -----------------------------
+    function updateVectorFromInputs() {
+        const x = parseFloat(vx.value);
+        const y = parseFloat(vy.value);
+        const z = parseFloat(vz.value);
+
+        if ([x, y, z].some(Number.isNaN)) return;
+
+        state.setVector(new Vector3(x, y, z));
+    }
+
+    vx.addEventListener("input", updateVectorFromInputs);
+    vy.addEventListener("input", updateVectorFromInputs);
+    vz.addEventListener("input", updateVectorFromInputs);
+
+    // -----------------------------
+    // SEMANTIC ACTION: Step Button
+    // -----------------------------
+    //
+    // Semantic heisst hier: model-changing action oder auch: state-changing operation genannt
+    const stepBtn = document.querySelector("#step");
+    if (stepBtn) {
+        stepBtn.onclick = () => {
+            const v = state.vector;
+            if (!v) return;
+            state.setVector(new Vector3(v.x + 0.1, v.y, v.z));
+        };
+    }
+}
+
+# FILE C:\Homepage\math-education-v4\src\ui\LinearMapView.js
+
+// src/ui/LinearMapView.js
+"use strict";
+
+import { Vector3 } from "../math/Vector3.js";
+import { Matrix3 } from "../math/Matrix3.js";
+
+function cell(value, editable, onChange) {
+    if (!editable) {
+        return `<div class="cell">${value.toFixed(2)}</div>`;
+    }
+    return `<input class="cell" type="number" step="0.1" value="${value}"
+        data-hook="edit">`;
+}
+
+export function bindLinearMapView(state) {
+
+    const mDiv = document.getElementById("matrixA");
+    const vDiv = document.getElementById("vectorV");
+    const rDiv = document.getElementById("vectorR");
+
+    state.onChange((s) => {
+        if (!s.matrix || !s.vector || !s.resultVector) return;
+
+        // ---------- MATRIX ----------
+        mDiv.innerHTML = "";
+        s.matrix.values.forEach((val, i) => {
+            const inp = document.createElement("input");
+            inp.className = "cell";
+            inp.type = "number";
+            inp.step = "0.1";
+            inp.value = val;
+            inp.oninput = () => {
+                const v = [...s.matrix.values];
+                v[i] = parseFloat(inp.value);
+                state.setMatrix(new Matrix3(v));
+            };
+            mDiv.appendChild(inp);
+            if ((i + 1) % 3 === 0) mDiv.appendChild(document.createElement("br"));
+        });
+
+        // ---------- VECTOR ----------
+        vDiv.innerHTML = "";
+        ["x", "y", "z"].forEach((k) => {
+            const inp = document.createElement("input");
+            inp.className = "cell";
+            inp.type = "number";
+            inp.step = "0.1";
+            inp.value = s.vector[k];
+            inp.oninput = () => {
+                const v = new Vector3(
+                    parseFloat(vDiv.children[0].value),
+                    parseFloat(vDiv.children[1].value),
+                    parseFloat(vDiv.children[2].value)
+                );
+                state.setVector(v);
+            };
+            vDiv.appendChild(inp);
+            vDiv.appendChild(document.createElement("br"));
+        });
+
+        // ---------- RESULT ----------
+        rDiv.innerHTML = "";
+        ["x", "y", "z"].forEach((k) => {
+            const d = document.createElement("div");
+            d.className = "cell";
+            d.textContent = s.resultVector[k].toFixed(2);
+            rDiv.appendChild(d);
+            rDiv.appendChild(document.createElement("br"));
+        });
+    });
+}
+
+# PROJECT STRUCTURE
+
+  Doku.odt
+  GptKonvsAppArchtUndLinAbb.docx
+  favicon.ico
+  gpt_bundle.txt
+  index.html
+  server.py
+  src/
+    config.js
+    app/
+      index.js
+    builders/
+      CoordinateSystemBuilder.js
+      CubeBuilder.js
+      CubeWireframeBuilder.js
+      VectorBuilder.js
+    controls/
+      CameraController.js
+    experiments/
+      loadExperiment.js
+      basisChange/
+        index.js
+        run.js
+        setup.js
+      LinearMap/
+        index.js
+        run.js
+        setup.js
+    geometry/
+      Geometry.js
+    gl/
+      createProgram.js
+      createShader.js
+    loaders/
+      GeometryLoader.js
+      loadText.js
+    math/
+      Basis.js
+      LenearAlgebra.js
+      Matrix3.js
+      Vector3.js
+      mat3.js
+      mat4.js
+    render/
+      Camera.js
+      Drawable.js
+      Projection.js
+      Scene.js
+    shaders/
+      fShaderCode.glsl
+      vShaderCode.glsl
+    state/
+      MathState.js
+    ui/
+      Inspector.js
+      LinearMapView.js
+    utils/
+      common.js
+      graph2d.js
+      index.js
+      mat2.js
+      mat2d.js
+      quat.js
+      quat2.js
+      series.js
+      vec2.js
+      vec3.js
+      vec4.js
+      webgl-utils.js
+      webgl-utils2.js
