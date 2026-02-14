@@ -188,82 +188,51 @@ async function start() {
 	// 5) UI an State binden (nur lesen)
 	bindLinearMapView(state);
 
+	
+	// Geometrie einmal erstellen
+	this.cube = cube = scene.addGeometry(
+		CubeWireframeBuilder.build(WorldConfig.EXTENT)
+	);
+
+	let vectorDrawable = null;
+	let resultDrawable = null;
+
 	// 6) Rendering an State binden (nur lesen)
 	state.onChange((s) => {
-		scene.clear();
 
-		// optional: Raumreferenz
-		scene.addGeometry(CubeWireframeBuilder.build(WorldConfig.EXTENT));
-		
-		
-		// zwei Koordinatensysteme
-		if (s.basisA) {
-			scene.addGeometry(CoordinateSystemBuilder.build(
-									s.basisA, 
-									WorldConfig.EXTENT, 
-									WorldConfig.TICK_STEP,
-									WorldConfig.TICK_SIZE,
-									[1,0,0,1]
-				)
+		if (s.vector && !vectorDrawable) {
+			vectorDrawable = scene.addGeometry(
+				VectorBuilder.build(s.vector, { color: [1,0,0,1] })
 			);
 		}
 
-		if (s.basisB) {
-			scene.addGeometry(CoordinateSystemBuilder.build(
-									s.basisB, 
-									WorldConfig.EXTENT, 
-									WorldConfig.TICK_STEP,
-									WorldConfig.TICK_SIZE,
-									[0,1,0,1]
-				)
-			);
-		}
-		
-		// Der Vektor
-    	if (s.vector) {
-			scene.addGeometry(
-				VectorBuilder.build(s.vector, {
-					color: [1,0,0,1]
-				})
-			);
-		}
-
-		// 🔥 Ergebnisvektor
-		if (s.resultVector) {
-			scene.addGeometry(
+		if (s.resultVector && !resultDrawable) {
+			resultDrawable = scene.addGeometry(
 				VectorBuilder.build(s.resultVector, { color: [0,1,0,1] })
 			);
 		}
 
-		scene.render(); 
+		if (vectorDrawable) {
+			vectorDrawable.updatePositions([
+				0,0,0,
+				s.vector.x,
+				s.vector.y,
+				s.vector.z
+			]);
+		}
 
+		if (resultDrawable) {
+			resultDrawable.updatePositions([
+				0,0,0,
+				s.resultVector.x,
+				s.resultVector.y,
+				s.resultVector.z
+			]);
+		}
 	});
 
-	// 7) Experiment laden und laufen lassen (schreibt State)
-
-	// Basis um 20 Grad gedreht
-	const ANZ_GRAD = 20;
-	const theta = (ANZ_GRAD / 180) * Math.PI;
-
-	// einfache lineare Abbildung (hier jetzt darstellung der neuen Basis mit alten Zahlen)
-    const linearMapMatrix = new Matrix3([
-        [Math.cos(theta), -Math.sin(theta), 0],
-        [Math.sin(theta),  Math.cos(theta), 0],
-        [0, 0, 1]
-    ]);
-
-    /*
-	// In Zahlen: 20 Grad gedreht gegen Uhrzeigersinn
-	const matrix = new Matrix3([
-		[ 0.940, -0.342, 0 ],
-		[ 0.342,  0.940, 0 ],
-		[ 0,      0,     1 ]
-	]);
-	*/
-
-
-	const experiment = await loadExperiment("linearMap");
-	experiment.run(state, linearMapMatrix);
+	// 7) Starten
+	scene.start();
 }
 
 
