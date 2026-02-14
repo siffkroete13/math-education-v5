@@ -23,7 +23,34 @@ export class PhysicsWorld {
 	}
 
 	update(dt) {
+		integrate(dt);
+		resolveSphereSphere();
+		resolveWorldBounds();
+	}
 
+	resolveSphereSphere() {
+
+        for (let i = 0; i < this.bodies.length; i++) {
+            for (let j = i + 1; j < this.bodies.length; j++) {
+                this.resolveCollisionFast(
+                    this.bodies[i],
+                    this.bodies[j]
+                );
+            }
+        }
+    }
+
+
+	// ============================================================
+	// Integration bedeutet:
+	// Aus Geschwindigkeit neue Position berechnen.
+	//
+	// Oder allgemeiner:
+	//
+	// Zeitentwicklung eines Systems berechnen.
+	// ============================================================
+
+	integrate(dt) {
 		// ------------------------------------------------------------
 		// 1) Bewegung: klassische Euler-Integration
 		// p = p + v * dt
@@ -34,75 +61,10 @@ export class PhysicsWorld {
 				this.scale(b.velocity, dt)
 			);
 		}
-
-		// ------------------------------------------------------------
-		// 2) Paarweise Kollision prüfen
-		// ------------------------------------------------------------
-		for (let i = 0; i < this.bodies.length; i++) {
-			for (let j = i + 1; j < this.bodies.length; j++) {
-				this.resolveCollision(this.bodies[i], this.bodies[j]);
-			}
-		}
 	}
 
-	// ============================================================
-	// Vektor-Operationen
-	// ============================================================
 
-	addInPlace(target, v) {
-		target.x += v.x;
-		target.y += v.y;
-		target.z += v.z;
-	}
-
-	subInPlace(target, v) {
-		target.x -= v.x;
-		target.y -= v.y;
-		target.z -= v.z;
-	}
-
-	scaleInPlace(target, s) {
-		target.x *= s;
-		target.y *= s;
-		target.z *= s;
-	}
-
-	scaleTo(out, v, s) {
-		out.x = v.x * s;
-		out.y = v.y * s;
-		out.z = v.z * s;
-	}
-
-	add(a, b) {
-		return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
-	}
-
-	sub(a, b) {
-		return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
-	}
-
-	scale(v, s) {
-		return { x: v.x * s, y: v.y * s, z: v.z * s };
-	}
-
-	dot(a, b) {
-		return a.x*b.x + a.y*b.y + a.z*b.z;
-	}
-
-	length(v) {
-		return Math.sqrt(this.dot(v, v));
-	}
-
-	normalize(v) {
-		const len = this.length(v);
-		if (len < 1e-8) return null;
-		return this.scale(v, 1 / len);
-	}
-
-	dot(a, b) {
-		return a.x*b.x + a.y*b.y + a.z*b.z;
-	}
-
+	
 	// ============================================================
 	// Kugel-Kugel-Kollision (elastisch) 3d (didaktische Version, unten ist schneller Version)
 	// ============================================================
@@ -181,7 +143,7 @@ export class PhysicsWorld {
 
 		const correction = this.scale(collisionNormalVector, overlap / 2);
 
-		his.subInPlace(bodyA.position, correction);
+		this.subInPlace(bodyA.position, correction);
 
 		this.addInPlace(bodyB.position, correction);
 	}
@@ -360,4 +322,102 @@ export class PhysicsWorld {
 		bodyB.position.y += correction * ny;
 		bodyB.position.z += correction * nz;
 	}
+
+	 resolveWorldBounds() {
+
+        const e = this.extent;
+
+        for (const b of this.bodies) {
+
+            if (b.position.x - b.radius < -e) {
+                b.position.x = -e + b.radius;
+                b.velocity.x *= -this.restitution;
+            }
+
+            if (b.position.x + b.radius > e) {
+                b.position.x = e - b.radius;
+                b.velocity.x *= -this.restitution;
+            }
+
+            if (b.position.y - b.radius < -e) {
+                b.position.y = -e + b.radius;
+                b.velocity.y *= -this.restitution;
+            }
+
+            if (b.position.y + b.radius > e) {
+                b.position.y = e - b.radius;
+                b.velocity.y *= -this.restitution;
+            }
+
+            if (b.position.z - b.radius < -e) {
+                b.position.z = -e + b.radius;
+                b.velocity.z *= -this.restitution;
+            }
+
+            if (b.position.z + b.radius > e) {
+                b.position.z = e - b.radius;
+                b.velocity.z *= -this.restitution;
+            }
+        }
+    }
+
+
+	// ============================================================
+	// Vektor-Operationen
+	// ============================================================
+
+	addInPlace(target, v) {
+		target.x += v.x;
+		target.y += v.y;
+		target.z += v.z;
+	}
+
+	subInPlace(target, v) {
+		target.x -= v.x;
+		target.y -= v.y;
+		target.z -= v.z;
+	}
+
+	scaleInPlace(target, s) {
+		target.x *= s;
+		target.y *= s;
+		target.z *= s;
+	}
+
+	scaleTo(out, v, s) {
+		out.x = v.x * s;
+		out.y = v.y * s;
+		out.z = v.z * s;
+	}
+
+	add(a, b) {
+		return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
+	}
+
+	sub(a, b) {
+		return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+	}
+
+	scale(v, s) {
+		return { x: v.x * s, y: v.y * s, z: v.z * s };
+	}
+
+	dot(a, b) {
+		return a.x*b.x + a.y*b.y + a.z*b.z;
+	}
+
+	length(v) {
+		return Math.sqrt(this.dot(v, v));
+	}
+
+	normalize(v) {
+		const len = this.length(v);
+		if (len < 1e-8) return null;
+		return this.scale(v, 1 / len);
+	}
+
+	dot(a, b) {
+		return a.x*b.x + a.y*b.y + a.z*b.z;
+	}
+
 }

@@ -181,80 +181,50 @@ async function start() {
 	// 5) UI an State binden (nur lesen)
 	bindLinearMapView(state);
 
+	// Geometrie einmal erstellen
+	this.cube = cube = scene.addGeometry(
+		CubeWireframeBuilder.build(WorldConfig.EXTENT)
+	);
+
+	let vectorDrawable = null;
+	let resultDrawable = null;
+
 	// 6) Rendering an State binden (nur lesen)
 	state.onChange((s) => {
-		scene.clear();
 
-		// optional: Raumreferenz
-		scene.addGeometry(CubeWireframeBuilder.build(WorldConfig.EXTENT));
-
-		// zwei Koordinatensysteme
-		if (s.basisA) {
-			scene.addGeometry(CoordinateSystemBuilder.build(
-									s.basisA,
-									WorldConfig.EXTENT,
-									WorldConfig.TICK_STEP,
-									WorldConfig.TICK_SIZE,
-									[1,0,0,1]
-				)
+		if (s.vector && !vectorDrawable) {
+			vectorDrawable = scene.addGeometry(
+				VectorBuilder.build(s.vector, { color: [1,0,0,1] })
 			);
 		}
 
-		if (s.basisB) {
-			scene.addGeometry(CoordinateSystemBuilder.build(
-									s.basisB,
-									WorldConfig.EXTENT,
-									WorldConfig.TICK_STEP,
-									WorldConfig.TICK_SIZE,
-									[0,1,0,1]
-				)
-			);
-		}
-
-		// Der Vektor
-    	if (s.vector) {
-			scene.addGeometry(
-				VectorBuilder.build(s.vector, {
-					color: [1,0,0,1]
-				})
-			);
-		}
-
-		// 🔥 Ergebnisvektor
-		if (s.resultVector) {
-			scene.addGeometry(
+		if (s.resultVector && !resultDrawable) {
+			resultDrawable = scene.addGeometry(
 				VectorBuilder.build(s.resultVector, { color: [0,1,0,1] })
 			);
 		}
 
-		scene.render();
+		if (vectorDrawable) {
+			vectorDrawable.updatePositions([
+				0,0,0,
+				s.vector.x,
+				s.vector.y,
+				s.vector.z
+			]);
+		}
 
+		if (resultDrawable) {
+			resultDrawable.updatePositions([
+				0,0,0,
+				s.resultVector.x,
+				s.resultVector.y,
+				s.resultVector.z
+			]);
+		}
 	});
 
-	// 7) Experiment laden und laufen lassen (schreibt State)
-
-	// Basis um 20 Grad gedreht
-	const ANZ_GRAD = 20;
-	const theta = (ANZ_GRAD / 180) * Math.PI;
-
-	// einfache lineare Abbildung (hier jetzt darstellung der neuen Basis mit alten Zahlen)
-    const linearMapMatrix = new Matrix3([
-        [Math.cos(theta), -Math.sin(theta), 0],
-        [Math.sin(theta),  Math.cos(theta), 0],
-        [0, 0, 1]
-    ]);
-
-    /*
-	// In Zahlen: 20 Grad gedreht gegen Uhrzeigersinn
-	const matrix = new Matrix3([
-		[ 0.940, -0.342, 0 ],
-		[ 0.342,  0.940, 0 ],
-		[ 0,      0,     1 ]
-	]);
-	*/
-
-	const experiment = await loadExperiment("linearMap");
-	experiment.run(state, linearMapMatrix);
+	// 7) Starten
+	scene.start();
 }
 
 // DOM Ready
@@ -276,255 +246,6 @@ Wenn es nicht funktioniert dann mit dem python extra script:
 python server.py
 
 */
-
-# FILE C:\Homepage\math-education-v5\src\builders\CoordinateSystemBuilder.js
-
-// src/builders/CoordinateSystemBuilder.js
-"use strict";
-
-export class CoordinateSystemBuilder {
-
-   static build(basis, length = 1, tickStep = 1, tickSize = 0.05, color = [1,0,0,1]) {
-
-        const positions = [];
-        const colors = [];
-
-        function pushLine(a, b, color) {
-            positions.push(
-                a.x, a.y, a.z,
-                b.x, b.y, b.z
-            );
-            colors.push(...color, ...color);
-        }
-
-        const axes = [
-            { dir: basis.e1, ortho: basis.e2, color: color },
-            { dir: basis.e2, ortho: basis.e1, color: color },
-            { dir: basis.e3, ortho: basis.e1, color: color },
-        ];
-
-        for (const { dir, ortho, color } of axes) {
-
-            // Achse
-            pushLine(
-                {
-                    x: -dir.x * length,
-                    y: -dir.y * length,
-                    z: -dir.z * length
-                },
-                {
-                    x:  dir.x * length,
-                    y:  dir.y * length,
-                    z:  dir.z * length
-                },
-                color
-            );
-
-            // Ticks
-            for (let t = -length; t <= length; t += tickStep) {
-                if (t === 0) continue;
-
-                const center = {
-                    x: dir.x * t,
-                    y: dir.y * t,
-                    z: dir.z * t
-                };
-
-                const offset = {
-                    x: ortho.x * tickSize,
-                    y: ortho.y * tickSize,
-                    z: ortho.z * tickSize
-                };
-
-                pushLine(
-                    {
-                        x: center.x - offset.x,
-                        y: center.y - offset.y,
-                        z: center.z - offset.z
-                    },
-                    {
-                        x: center.x + offset.x,
-                        y: center.y + offset.y,
-                        z: center.z + offset.z
-                    },
-                    color
-                );
-            }
-        }
-
-        return {
-            primitives: "LINES",
-            num_dim: 3,
-            num_color: 4,
-            num_vertices: positions.length / 3,
-            positions,
-            colors
-        };
-    }
-}
-
-# FILE C:\Homepage\math-education-v5\src\builders\CubeBuilder.js
-
-// src/builders/CubeBuilder.js
-"use strict";
-
-/**
- * CubeBuilder
- * -----------
- * Erzeugt die Geometrie (LINES) eines Würfels aus expliziter Mathematik.
- *
- * - KEIN WebGL
- * - KEINE Shader
- * - KEINE Kamera
- * - NUR: Vektoren → Geometrie
- */
-export class CubeBuilder {
-
-  /**
-   * center: { x, y, z }
-   * size: Kantenlänge
-   */
-  static build(center = { x: 0, y: 0, z: 0 }, size = 2) {
-
-    const h = size / 2;
-
-    // 8 Eckpunkte
-    const v = {
-      lbf: [-h, -h, -h],
-      rbf: [ h, -h, -h],
-      ltf: [-h,  h, -h],
-      rtf: [ h,  h, -h],
-
-      lbb: [-h, -h,  h],
-      rbb: [ h, -h,  h],
-      ltb: [-h,  h,  h],
-      rtb: [ h,  h,  h]
-    };
-
-    // Kanten
-    const edges = [
-      v.lbf, v.rbf,  v.rbf, v.rtf,  v.rtf, v.ltf,  v.ltf, v.lbf,
-      v.lbb, v.rbb,  v.rbb, v.rtb,  v.rtb, v.ltb,  v.ltb, v.lbb,
-      v.lbf, v.lbb,  v.rbf, v.rbb,  v.ltf, v.ltb,  v.rtf, v.rtb
-    ];
-
-    const positions = [];
-    for (const p of edges) {
-      positions.push(
-        p[0] + center.x,
-        p[1] + center.y,
-        p[2] + center.z
-      );
-    }
-
-    // ✅ WICHTIG: vec4-Farben
-    const colors = [];
-    for (let i = 0; i < positions.length / 3; i++) {
-      colors.push(0.2, 0.2, 0.2, 1.0);
-    }
-
-    return {
-      primitives: "LINES",
-      num_dim: 3,
-      num_color: 4,          // ← DAS war der Killer
-      num_vertices: positions.length / 3,
-      positions,
-      colors
-    };
-  }
-}
-
-# FILE C:\Homepage\math-education-v5\src\builders\CubeWireframeBuilder.js
-
-// src/builders/CubeWireframeBuilder.js
-"use strict";
-
-/**
- * Erzeugt einen drahtgitter-Würfel (Wireframe)
- * symmetrisch um den Ursprung.
- *
- * Der Würfel dient als visuelle Raumreferenz.
- */
-export class CubeWireframeBuilder {
-
-	static build(size = 1) {
-
-		const s = size;
-
-		// 8 Ecken des Würfels
-		const v = [
-		[-s, -s, -s],
-		[ s, -s, -s],
-		[ s,  s, -s],
-		[-s,  s, -s],
-		[-s, -s,  s],
-		[ s, -s,  s],
-		[ s,  s,  s],
-		[-s,  s,  s],
-		];
-
-		// Kanten (jeweils 2 Eckpunkte)
-		const edges = [
-			[0,1],[1,2],[2,3],[3,0], // unten
-			[4,5],[5,6],[6,7],[7,4], // oben
-			[0,4],[1,5],[2,6],[3,7]  // vertikal
-		];
-
-		const positions = [];
-		const colors = [];
-
-		for (const [a, b] of edges) {
-			positions.push(...v[a], ...v[b]);
-
-			// Grau, leicht transparent
-			colors.push(
-				0.7, 0.7, 0.7, 1,
-				0.7, 0.7, 0.7, 1
-			);
-		}
-
-		return {
-			primitives: "LINES",
-			num_dim: 3,
-			num_color: 4,
-			num_vertices: positions.length / 3,
-			positions,
-			colors
-		};
-	}
-}
-
-# FILE C:\Homepage\math-education-v5\src\builders\VectorBuilder.js
-
-// src/builders/VectorBuilder.js
-export class VectorBuilder {
-
-  static build(vector, options = {}) {
-
-    const { color = [0, 0, 0, 1], scale = 1 } = options;
-
-    const positions = [
-      0, 0, 0,
-      vector.x * scale,
-      vector.y * scale,
-      vector.z * scale
-    ];
-
-    const colors = [
-      ...color,
-      ...color
-    ];
-
-    return {
-      primitives: "LINES",
-      num_dim: 3,
-      num_color: 4,
-      num_vertices: 2,
-      positions,
-      colors
-    };
-  }
-}
 
 # FILE C:\Homepage\math-education-v5\src\controls\CameraController.js
 
@@ -556,24 +277,6 @@ export class CameraController {
         }
 
         this.onChange(); // z.B. scene.render()
-    }
-}
-
-# FILE C:\Homepage\math-education-v5\src\experiments\loadExperiment.js
-
-// src/experiments/loadExperiment.js
-"use strict";
-
-export function loadExperiment(name) {
-    switch (name) {
-        case "basisChange":
-        return import("./"+name+"/index.js").then((m) => m.default);
-        break
-        case "linearMap":
-        return import("./"+name+"/index.js").then((m) => m.default);
-        break
-        default:
-        return Promise.reject(new Error("Unbekanntes Experiment: " + name));
     }
 }
 
@@ -643,52 +346,6 @@ import { run } from "./run.js";
 
 export default { setup, run };
 
-# FILE C:\Homepage\math-education-v5\src\experiments\LinearMap\run.js
-
-// src/experiments/LinearMap/run.js
-"use strict";
-
-export function run(state, linearMapMatrix) {
-
-    const data = this.setup(linearMapMatrix);
-
-    // NUR Bedeutung setzen
-    state.setBasisA(data.basisA);
-    state.setBasisB(data.basisB);
-
-    state.setVector(data.vector);
-    state.setMatrix(data.linearMapMatrix);
-    state.setResultVector(data.result);
-}
-
-# FILE C:\Homepage\math-education-v5\src\experiments\LinearMap\setup.js
-
-// src/experiments/LinearMap/run.js
-"use strict";
-
-import { Basis } from "../../math/Basis.js";
-import { Vector3 } from "../../math/Vector3.js";
-import { Matrix3 } from "../../math/Matrix3.js";
-
-export function setup(linearMapMatrix) {
-
-    const basisA = Basis.standard();
-
-    const basisB = Basis.standard().transform(linearMapMatrix); // ANZ_GRAD drehen
-
-    const vector = new Vector3(3, 4, 0);
-
-    const result = linearMapMatrix.multiplyVector(vector);
-
-    return {
-        basisA,
-        basisB,
-        vector,
-        linearMapMatrix,
-        result
-    };
-}
-
 # FILE C:\Homepage\math-education-v5\src\geometry\Geometry.js
 
 export class Geometry {
@@ -698,39 +355,6 @@ export class Geometry {
 		this.primitiveType = primitiveType;
 		this.vertexCount = positions.length / 3;
 	}
-}
-
-# FILE C:\Homepage\math-education-v5\src\gl\createProgram.js
-
-// src/gl/createProgram.js
-import { createShader } from "./createShader.js";
-
-export function createProgram(gl, vsSource, fsSource) {
-  const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
-  const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
-
-  const program = gl.createProgram();
-  gl.attachShader(program, vs);
-  gl.attachShader(program, fs);
-  gl.linkProgram(program);
-
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    const msg = gl.getProgramInfoLog(program);
-    gl.deleteProgram(program);
-    throw new Error(msg);
-  }
-
-  return {
-    program,
-    attribLocations: {
-      vertexPosition: gl.getAttribLocation(program, "aVertexPosition"),
-      vertexColor: gl.getAttribLocation(program, "aVertexColor"),
-    },
-    uniformLocations: {
-      projectionMatrix: gl.getUniformLocation(program, "uProjectionMatrix"),
-      modelViewMatrix: gl.getUniformLocation(program, "uModelViewMatrix"),
-    }
-  };
 }
 
 # FILE C:\Homepage\math-education-v5\src\loaders\GeometryLoader.js
@@ -870,6 +494,364 @@ export class Basis {
     }
 }
 
+# FILE C:\Homepage\math-education-v5\src\physics\PhysicsWord.js
+
+// src/physics/PhysicsWorld.js
+
+export class PhysicsWorld {
+
+	constructor() {
+
+		// Typische Werte für Restitution:
+
+		// Stahl auf Stahl: 	~0.9
+		// Gummi auf Beton:		~0.7
+		// Knete:				~0
+		// Superball:			~0.95
+		// Hartgummi: 			0.7 - 0.8
+		// Holz auf Holz		0.5 – 0.7
+		// Tennisball (neu):	~0.7
+
+		this.restitution = 0.85;
+		this.bodies = [];
+	}
+
+	add(body) {
+		this.bodies.push(body);
+	}
+
+	update(dt) {
+
+		// ------------------------------------------------------------
+		// 1) Bewegung: klassische Euler-Integration
+		// p = p + v * dt
+		// ------------------------------------------------------------
+		for (const b of this.bodies) {
+			b.position = this.add(
+				b.position,
+				this.scale(b.velocity, dt)
+			);
+		}
+
+		// ------------------------------------------------------------
+		// 2) Paarweise Kollision prüfen
+		// ------------------------------------------------------------
+		for (let i = 0; i < this.bodies.length; i++) {
+			for (let j = i + 1; j < this.bodies.length; j++) {
+				this.resolveCollision(this.bodies[i], this.bodies[j]);
+			}
+		}
+	}
+
+	// ============================================================
+	// Vektor-Operationen
+	// ============================================================
+
+	addInPlace(target, v) {
+		target.x += v.x;
+		target.y += v.y;
+		target.z += v.z;
+	}
+
+	subInPlace(target, v) {
+		target.x -= v.x;
+		target.y -= v.y;
+		target.z -= v.z;
+	}
+
+	scaleInPlace(target, s) {
+		target.x *= s;
+		target.y *= s;
+		target.z *= s;
+	}
+
+	scaleTo(out, v, s) {
+		out.x = v.x * s;
+		out.y = v.y * s;
+		out.z = v.z * s;
+	}
+
+	add(a, b) {
+		return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
+	}
+
+	sub(a, b) {
+		return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+	}
+
+	scale(v, s) {
+		return { x: v.x * s, y: v.y * s, z: v.z * s };
+	}
+
+	dot(a, b) {
+		return a.x*b.x + a.y*b.y + a.z*b.z;
+	}
+
+	length(v) {
+		return Math.sqrt(this.dot(v, v));
+	}
+
+	normalize(v) {
+		const len = this.length(v);
+		if (len < 1e-8) return null;
+		return this.scale(v, 1 / len);
+	}
+
+	dot(a, b) {
+		return a.x*b.x + a.y*b.y + a.z*b.z;
+	}
+
+	// ============================================================
+	// Kugel-Kugel-Kollision (elastisch) 3d (didaktische Version, unten ist schneller Version)
+	// ============================================================
+
+	resolveCollision(bodyA, bodyB) {
+
+		// ------------------------------------------------------------
+		// 1) Abstand der Mittelpunkte
+		// ------------------------------------------------------------
+		const centerOffset = this.sub(bodyB.position, bodyA.position);
+		const distance = this.length(centerOffset);
+
+		const minimumDistance = bodyA.radius + bodyB.radius;
+
+		// Keine Berührung → nichts tun
+		if (distance >= minimumDistance) return;
+
+		// ------------------------------------------------------------
+		// 2) Kollisions-Normale (Einheitsvektor). Ist die Gerade die die 2 Mittelpunkte verbindet: n= (pB​−pA) / (​∥pB​ − pA​​∥​)
+		// ------------------------------------------------------------
+		const collisionNormalVector = this.normalize(centerOffset);
+		if (!collisionNormalVector) return;
+
+		// ------------------------------------------------------------
+		// 3) Relative Geschwindigkeit (Vektor)
+		// ------------------------------------------------------------
+		const relativeVelocity = this.sub(bodyA.velocity, bodyB.velocity);
+
+		// ------------------------------------------------------------
+		// 4) Relative Geschwindigkeit entlang der Normalen (Skalar)
+		// ------------------------------------------------------------
+		const relativeVelocityAlongNormal = this.dot(relativeVelocity, collisionNormalVector);
+
+		// Wenn sie sich bereits trennen → kein Impuls
+		if (relativeVelocityAlongNormal > 0) return;
+
+		// ------------------------------------------------------------
+		// 5) Impulsfaktor (aus Impuls- und Energieerhaltung)
+		// ------------------------------------------------------------
+		const massA = bodyA.mass;
+		const massB = bodyB.mass;
+		const totalMass = massA + massB;
+
+		if (totalMass === 0) return;
+
+		// Ohne Restitution
+		// const factorA = (2 * massB) / totalMass;
+		// const factorB = (2 * massA) / totalMass;
+
+		// Mit Restitution
+		const factorA = ((1 + this.restitution) * massB) / totalMass;
+		const factorB = ((1 + this.restitution) * massA) / totalMass;
+
+		// ------------------------------------------------------------
+		// 6) Impulsvektor entlang der Normalen
+		// ------------------------------------------------------------
+		const normalVelocityVector = this.scale(collisionNormalVector, relativeVelocityAlongNormal);
+
+		// ------------------------------------------------------------
+		// 7) Neue Geschwindigkeiten (exakte Formel)
+		// ------------------------------------------------------------
+		bodyA.velocity = this.sub(
+			bodyA.velocity,
+			this.scale(normalVelocityVector, factorA)
+		);
+
+		bodyB.velocity = this.add(
+			bodyB.velocity,
+			this.scale(normalVelocityVector, factorB)
+		);
+
+		// ------------------------------------------------------------
+		// 8) Positionskorrektur (gegen Überlappung)
+		// ------------------------------------------------------------
+		const overlap = minimumDistance - distance;
+
+		const correction = this.scale(collisionNormalVector, overlap / 2);
+
+		his.subInPlace(bodyA.position, correction);
+
+		this.addInPlace(bodyB.position, correction);
+	}
+
+	// ============================================================
+	// Kugel-Kugel-Kollision (elastisch oder teilweise elastisch)
+	// 3D-Version, ohne Garbage, In-Place Berechnung
+	// ============================================================
+	resolveCollisionFast(bodyA, bodyB) {
+
+		// ------------------------------------------------------------
+		// 1) Abstand der Mittelpunkte berechnen
+		// ------------------------------------------------------------
+		// Wir bilden den Vektor von A nach B:
+		//
+		//   d = pB - pA
+		//
+		// dx, dy, dz sind die Komponenten dieses Verbindungsvektors.
+		//
+		const dx = bodyB.position.x - bodyA.position.x;
+		const dy = bodyB.position.y - bodyA.position.y;
+		const dz = bodyB.position.z - bodyA.position.z;
+
+		// Quadrat der Distanz:
+		//
+		//   distSq = dx² + dy² + dz²
+		//
+		// Das ist ||pB - pA||²
+		//
+		const distSq = dx*dx + dy*dy + dz*dz;
+
+		// Echte Distanz (Betrag des Vektors)
+		//
+		//   dist = √(distSq)
+		//
+		const dist = Math.sqrt(distSq);
+
+		// Falls Distanz extrem klein ist,
+		// ist die Richtung (Normale) nicht definiert.
+		// Dann brechen wir ab.
+		if (dist < 1e-8) return;
+
+		// Minimaler erlaubter Abstand der Mittelpunkte:
+		//
+		// Zwei Kugeln berühren sich genau dann,
+		// wenn der Abstand ihrer Mittelpunkte
+		// gleich der Summe ihrer Radien ist.
+		//
+		const minDist = bodyA.radius + bodyB.radius;
+
+		// Wenn sie weiter auseinander sind → keine Kollision
+		if (dist >= minDist) return;
+
+		// ------------------------------------------------------------
+		// 2) Kollisions-Normale berechnen
+		// ------------------------------------------------------------
+		// Die Kollisions-Normale ist der Einheitsvektor
+		// entlang der Verbindungslinie der Mittelpunkte.
+		//
+		// Mathematisch:
+		//
+		//   n = (pB - pA) / ||pB - pA||
+		//
+		// Das ist die Richtung, in der die Kontaktkraft wirkt.
+		//
+		const nx = dx / dist;
+		const ny = dy / dist;
+		const nz = dz / dist;
+
+		// ------------------------------------------------------------
+		// 3) Relative Geschwindigkeit berechnen
+		// ------------------------------------------------------------
+		// Wir betrachten die Geschwindigkeit von A relativ zu B:
+		//
+		//   v_rel = vA - vB
+		//
+		const rvx = bodyA.velocity.x - bodyB.velocity.x;
+		const rvy = bodyA.velocity.y - bodyB.velocity.y;
+		const rvz = bodyA.velocity.z - bodyB.velocity.z;
+
+		// ------------------------------------------------------------
+		// 4) Anteil dieser Geschwindigkeit entlang der Normale
+		// ------------------------------------------------------------
+		// Wir projizieren die relative Geschwindigkeit
+		// auf die Kollisions-Normale.
+		//
+		// Skalarprodukt:
+		//
+		//   relativeNormalVelocity = v_rel · n
+		//
+		// Das Ergebnis ist eine ZAHL (kein Vektor).
+		//
+		// Bedeutung:
+		//   < 0 → sie bewegen sich aufeinander zu
+		//   > 0 → sie entfernen sich
+		//
+		const relativeNormalVelocity =
+			rvx*nx + rvy*ny + rvz*nz;
+
+		// Wenn sie sich bereits voneinander entfernen,
+		// dann wenden wir keinen Impuls mehr an.
+		if (relativeNormalVelocity > 0) return;
+
+		// ------------------------------------------------------------
+		// 5) Massen
+		// ------------------------------------------------------------
+		const m1 = bodyA.mass;
+		const m2 = bodyB.mass;
+
+		const totalMass = m1 + m2;
+
+		// ------------------------------------------------------------
+		// 6) Restitution berücksichtigen
+		// ------------------------------------------------------------
+		// restitution e:
+		//
+		// e = 1  → perfekt elastisch
+		// e = 0  → komplett inelastisch (kein Rückprall)
+		//
+		// Die Stoßstärke wird skaliert mit (1 + e).
+		//
+		const factor =
+			((1 + this.restitution) * relativeNormalVelocity)
+			/ totalMass;
+
+		// ------------------------------------------------------------
+		// 7) Geschwindigkeiten aktualisieren
+		// ------------------------------------------------------------
+		//
+		// Hergeleitete Formel:
+		//
+		// vA' = vA - factor * m2 * n
+		// vB' = vB + factor * m1 * n
+		//
+		// Interpretation:
+		// - Schwere Kugel ändert sich weniger
+		// - Leichte Kugel ändert sich stärker
+		//
+		bodyA.velocity.x -= factor * m2 * nx;
+		bodyA.velocity.y -= factor * m2 * ny;
+		bodyA.velocity.z -= factor * m2 * nz;
+
+		bodyB.velocity.x += factor * m1 * nx;
+		bodyB.velocity.y += factor * m1 * ny;
+		bodyB.velocity.z += factor * m1 * nz;
+
+		// ------------------------------------------------------------
+		// 8) Positionskorrektur (gegen Überlappung)
+		// ------------------------------------------------------------
+		//
+		// Da wir diskret simulieren,
+		// können sich Kugeln leicht überlappen.
+		//
+		// overlap = wie viel sie zu nahe sind
+		//
+		const overlap = minDist - dist;
+
+		// Wir verteilen die Korrektur symmetrisch:
+		// Jede Kugel bewegt sich um die Hälfte.
+		//
+		const correction = overlap / 2;
+
+		bodyA.position.x -= correction * nx;
+		bodyA.position.y -= correction * ny;
+		bodyA.position.z -= correction * nz;
+
+		bodyB.position.x += correction * nx;
+		bodyB.position.y += correction * ny;
+		bodyB.position.z += correction * nz;
+	}
+}
+
 # FILE C:\Homepage\math-education-v5\src\render\Camera.js
 
 // render/Camera.js
@@ -881,15 +863,15 @@ class Camera {
     constructor() {
         this.angleX = 0;
         this.angleY = 0;
-        this.distance = WorldConfig.EXTENT * 6;
+        this.distance = WorldConfig.EXTENT * 6; // So in etwa dass man was sieht
     }
 
     getViewMatrix() {
         const viewMatrix = mat4.create();
 
-        mat4.translate(viewMatrix, viewMatrix, [0, 0, -this.distance]);
-        mat4.rotate(viewMatrix, viewMatrix, rad(this.angleX), [1, 0, 0]);
-        mat4.rotate(viewMatrix, viewMatrix, rad(this.angleY), [0, 1, 0]);
+        if(Math.abs(this.distance) > 0) mat4.translate(viewMatrix, viewMatrix, [0, 0, -this.distance]);
+        if(Math.abs(this.angleX) > 0) mat4.rotate(viewMatrix, viewMatrix, rad(this.angleX), [1, 0, 0]);
+        if(Math.abs(this.angleY) > 0) mat4.rotate(viewMatrix, viewMatrix, rad(this.angleY), [0, 1, 0]);
 
         return viewMatrix;
     }
@@ -899,349 +881,46 @@ export { Camera };
 
 # FILE C:\Homepage\math-education-v5\src\render\Drawable.js
 
-/**
- * CPU (JavaScript)
-│
-│  Geometry (positions, colors)
-│
-│  gl.bufferData(...)  ← KOPIE
-│
-▼
-GPU-Speicher (Buffer)
-│
-│  Attribute zeigen in Buffer hinein
-│
-▼
-Vertex-Shader
-│
-│  + Uniforms (global)
-│
-▼
-gl_Position
-
-GPU / WEBGL – KONZEPTUELLE ÜBERSICHT
-==================================
-
-Dieses Projekt benutzt WebGL bewusst didaktisch.
-Ziel ist zu verstehen:
-- welche Daten WO liegen
-- wann sie gesetzt werden
-- wie oft sie sich ändern
-- wer (CPU oder GPU) sie benutzt
-
---------------------------------------------------
-1) ZWEI GETRENNTE WELTEN
---------------------------------------------------
-
-CPU (JavaScript)
-- führt den Code aus
-- berechnet Mathematik
-- lädt Daten
-- entscheidet, WAS gezeichnet wird
-
-GPU (Grafikkarte)
-- führt Shader aus
-- verarbeitet Millionen Vertices / Pixel parallel
-- kennt KEINE JavaScript-Objekte
-- sieht nur rohe Zahlen
-
-CPU und GPU haben getrennten Speicher.
-Daten müssen explizit von CPU → GPU kopiert werden.
-
---------------------------------------------------
-2) GPU-SPEICHER: BUFFER
---------------------------------------------------
-
-Buffer sind Speicherbereiche auf der GPU.
-
-In diesem Projekt verwenden wir hauptsächlich:
-
-- ARRAY_BUFFER
-  → speichert Vertex-Daten
-  → z.B. Positionen, Farben, Normalen
-
-Beispiel:
-gl.createBuffer()
-gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
-gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW)
-
-WICHTIG:
-- bufferData kopiert Daten EINMAL von CPU → GPU
-- spätere Änderungen am JavaScript-Array haben KEINE Wirkung
-- Buffer bleiben auf der GPU, bis sie gelöscht werden
-
-Lebensdauer:
-- meist: beim Erzeugen eines Drawable
-- bleibt über viele Frames bestehen
-
---------------------------------------------------
-3) ATTRIBUTE (vertex attributes)
---------------------------------------------------
-
-Attribute sind GPU-Variablen,
-die sich PRO VERTEX unterscheiden.
-
-Typische Attribute:
-- Position eines Vertex
-- Farbe eines Vertex
-- Normalenvektor
-
-Im Vertex-Shader:
-attribute vec3 aVertexPosition;
-attribute vec3 aVertexColor;
-
-Eigenschaften:
-- ein Wert pro Vertex
-- Werte kommen aus Buffern
-- GPU iteriert automatisch über alle Vertices
-
-Verbindung Buffer → Attribut:
-gl.bindBuffer(...)
-gl.vertexAttribPointer(...)
-gl.enableVertexAttribArray(...)
-
-Lebensdauer:
-- Definition: einmal beim Setup
-- Nutzung: bei jedem Draw-Call
-- Wert: pro Vertex unterschiedlich
-
---------------------------------------------------
-4) UNIFORMS
---------------------------------------------------
-
-Uniforms sind GPU-Variablen,
-die für ALLE Vertices und Pixel gleich sind.
-
-Typische Uniforms:
-- Projektionsmatrix
-- View-Matrix
-- Zeit
-- Farbe
-- Lichtparameter
-
-Im Shader:
-uniform mat4 uProjectionMatrix;
-uniform mat4 uModelViewMatrix;
-
-Eigenschaften:
-- ein Wert pro Draw-Call
-- gleich für alle Vertices
-- wird von der CPU gesetzt
-
-Setzen in JavaScript:
-gl.uniformMatrix4fv(...)
-gl.uniform1f(...)
-gl.uniform3fv(...)
-
-Lebensdauer:
-- meist: pro Frame oder pro Objekt
-- Werte bleiben gültig, bis sie überschrieben werden
-
---------------------------------------------------
-5) VERTEX-SHADER
---------------------------------------------------
-
-Der Vertex-Shader läuft:
-
-- EINMAL PRO VERTEX
-- vollständig auf der GPU
-- parallel für alle Vertices
-
-Aufgaben:
-- liest Attribute (Position, Farbe, ...)
-- benutzt Uniforms (Matrizen, Parameter)
-- berechnet gl_Position
-
-WICHTIG:
-- Vertex-Shader kennt KEINE anderen Vertices
-- kein globaler Zustand
-- keine Schleifen über andere Vertices
-
---------------------------------------------------
-6) FRAGMENT-SHADER
---------------------------------------------------
-
-Der Fragment-Shader läuft:
-
-- EINMAL PRO PIXEL (Fragment)
-- nach der Rasterisierung
-- oft millionenfach pro Frame
-
-Aufgaben:
-- berechnet die Farbe eines Pixels
-- kann Uniforms lesen
-- kann interpolierte Werte aus dem Vertex-Shader lesen
-
-WICHTIG:
-- Fragment-Shader kennt KEINE Vertices
-- kennt nur den aktuellen Pixel
-
---------------------------------------------------
-7) LEBENSDAUER-ÜBERSICHT
---------------------------------------------------
-
-Pro Anwendung (einmal):
-- Shader kompilieren
-- Programme erstellen
-
-Pro Objekt (einmal):
-- Geometry erzeugen
-- Buffer anlegen
-- Drawable erstellen
-
-Pro Frame:
-- Clear Screen
-- Uniforms setzen (z.B. View/Projection)
-- drawArrays aufrufen
-
-Pro Vertex:
-- Vertex-Shader ausführen
-
-Pro Pixel:
-- Fragment-Shader ausführen
-
---------------------------------------------------
-8) WICHTIGE MERKSÄTZE
---------------------------------------------------
-
-- Buffer = GPU-Speicher
-- Attribute = Daten pro Vertex
-- Uniforms = Daten für alle Vertices
-- Vertex-Shader = pro Vertex
-- Fragment-Shader = pro Pixel
-- GPU rechnet, CPU denkt
-
---------------------------------------------------
-9) DIDAKTISCHE ENTSCHEIDUNG DIESES PROJEKTS
---------------------------------------------------
-
-- Mathematik findet auf der CPU statt
-- Geometrie wird explizit berechnet
-- Shader sind bewusst "dumm"
-- Keine versteckte Logik in der GPU (Optimierungen siehe unten)
-
-Ziel:
-Verstehen, nicht optimieren.
-
- *
- *
-
- * Drawable
- * --------
- * Ein Drawable ist die GPU-Repräsentation von Geometry-DATEN.
- *
- * WICHTIG:
- * - Drawable kennt KEINE Mathematik
- * - Drawable kennt KEINE Bedeutung
- * - Drawable kennt KEINE Kamera-Semantik
- *
- * Aufgabe:
- *   CPU-Daten  → GPU-Speicher
- *   GPU-Speicher → drawArrays
-
- *
-
- * Ein Drawable ist die Brücke zwischen CPU (JavaScript)
- * und GPU (WebGL).
- *
- * Es nimmt reine GEOMETRIE-DATEN (Zahlen)
- * und lädt sie in den Grafikspeicher.
- *
- * Drawable:
- * - macht KEINE Mathematik
- * - interpretiert KEINE Bedeutung
- * - reicht Daten nur weiter
- */
-
+// src/render/Drawable.js
 "use strict";
 
 class Drawable {
 
-    /**
-     * Konstruktor
-     *
-     * gl          → Zugriff auf GPU
-     * programInfo → Shader + Locations (Uniforms, Attributes)
-     * geometry    → reine Daten (CPU-Speicher)
-     */
     constructor(gl, programInfo, geometry) {
 
-        // WebGL-Kontext (unsere Verbindung zur GPU)
         this.gl = gl;
-
-        // Enthält:
-        // - Shader-Programm
-        // - wo Uniforms liegen
-        // - wo Attribute liegen
         this.programInfo = programInfo;
-
-        // Geometry lebt im CPU-Speicher (JavaScript-Objekt)
         this.geometry = geometry;
 
-        // Referenzen auf GPU-Speicher (noch leer)
-        this.vertexBuffer = null;
-        this.colorBuffer = null;
-
-        // Welches primitive wird gezeichnet? (LINES, TRIANGLES, ...)
         const primitiveName = geometry.primitives?.toUpperCase();
         this.primitiveType =
             gl[primitiveName] !== undefined
                 ? gl[primitiveName]
                 : gl.TRIANGLES;
 
-        // Wie viele Vertices sollen gezeichnet werden?
-        // Entweder explizit angegeben oder aus den Daten berechnet
         this.vertexCount =
             geometry.num_vertices ??
             (geometry.positions.length / geometry.num_dim);
 
-        // JETZT: Daten von CPU → GPU kopieren
         this.initBuffers();
     }
 
-    /**
-     * initBuffers
-     * -----------
-     * Dieser Schritt ist extrem wichtig:
-     *
-     * Hier verlassen die Daten endgültig JavaScript
-     * und landen im GPU-Speicher.
-     *
-     * Danach:
-     * - JavaScript kann die Daten ändern,
-     *   aber die GPU merkt davon NICHTS.
-     */
     initBuffers() {
         const gl = this.gl;
 
-        // ===============================
-        // POSITIONS-BUFFER
-        // ===============================
-
-        // 1) GPU-Speicher anlegen
+        // Positions
         this.vertexBuffer = gl.createBuffer();
-
-        // 2) Sagen: dieser Buffer ist jetzt ein ARRAY_BUFFER
         gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-
-        // 3) CPU → GPU Kopie
         gl.bufferData(
             gl.ARRAY_BUFFER,
             new Float32Array(this.geometry.positions),
-            gl.STATIC_DRAW
+            gl.DYNAMIC_DRAW   // 🔥 wichtig
         );
 
-        // ===============================
-        // COLOR-BUFFER (optional)
-        // ===============================
-        if (
-            this.geometry.colors &&
-            this.geometry.colors.length ===
-                this.vertexCount * this.geometry.num_color
-        ) {
+        // Colors
+        if (this.geometry.colors) {
             this.colorBuffer = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
-
             gl.bufferData(
                 gl.ARRAY_BUFFER,
                 new Float32Array(this.geometry.colors),
@@ -1250,26 +929,23 @@ class Drawable {
         }
     }
 
-    /**
-     * draw
-     * ----
-     * Dieser Aufruf zeichnet das Objekt.
-     *
-     * WICHTIG:
-     * - draw() läuft PRO FRAME
-     * - Buffer liegen bereits auf der GPU
-     * - jetzt werden nur noch ZEIGER gesetzt
-     */
+    // 🔥 NEU: Positionen aktualisieren ohne neuen Buffer
+    updatePositions(newPositions) {
+        const gl = this.gl;
+
+        this.geometry.positions = newPositions;
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+        gl.bufferSubData(
+            gl.ARRAY_BUFFER,
+            0,
+            new Float32Array(newPositions)
+        );
+    }
+
     draw(projectionMatrix, viewMatrix) {
         const gl = this.gl;
         const prog = this.programInfo;
-
-        // ===============================
-        // UNIFORMS
-        // ===============================
-        // Uniforms sind globale Werte:
-        // - gleich für ALLE Vertices
-        // - werden einmal pro Draw gesetzt
 
         gl.uniformMatrix4fv(
             prog.uniformLocations.projectionMatrix,
@@ -1283,32 +959,22 @@ class Drawable {
             viewMatrix
         );
 
-        // ===============================
-        // POSITION-ATTRIBUTE
-        // ===============================
-        // Attribute sind PRO VERTEX unterschiedlich
-
-        // 1) richtigen Buffer auswählen
+        // Position
         gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-
-        // 2) erklären, wie die Daten gelesen werden sollen
         gl.vertexAttribPointer(
             prog.attribLocations.vertexPosition,
-            this.geometry.num_dim,   // z.B. vec3
+            this.geometry.num_dim,
             gl.FLOAT,
             false,
             0,
             0
         );
 
-        // 3) Attribut aktivieren
         gl.enableVertexAttribArray(
             prog.attribLocations.vertexPosition
         );
 
-        // ===============================
-        // COLOR-ATTRIBUTE
-        // ===============================
+        // Color
         if (this.colorBuffer) {
             gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
             gl.vertexAttribPointer(
@@ -1322,24 +988,7 @@ class Drawable {
             gl.enableVertexAttribArray(
                 prog.attribLocations.vertexColor
             );
-        } else {
-            // Keine Farben pro Vertex:
-            // → eine konstante Farbe für alle Vertices
-            gl.disableVertexAttribArray(
-                prog.attribLocations.vertexColor
-            );
-            gl.vertexAttrib4fv(
-                prog.attribLocations.vertexColor,
-                this.geometry.colors
-            );
         }
-
-        // ===============================
-        // DRAW CALL
-        // ===============================
-        // JETZT arbeitet die GPU:
-        // - Vertex-Shader wird pro Vertex ausgeführt
-        // - Fragment-Shader pro Pixel
 
         gl.drawArrays(
             this.primitiveType,
@@ -1350,21 +999,6 @@ class Drawable {
 }
 
 export { Drawable };
-
-/*
-Konkrete Performance-Gewinne (realistisch)
-
-Maßnahme	                                    Gewinn
-
-Buffer nur einmal erstellen	                    ⭐⭐
-
-Draw Calls reduzieren	                        ⭐⭐⭐
-
-CPU → GPU Mathe verschieben	                    ⭐⭐⭐⭐
-
-Instancing	                                    ⭐⭐⭐⭐⭐
-
-*/
 
 # FILE C:\Homepage\math-education-v5\src\render\Projection.js
 
@@ -1606,101 +1240,64 @@ import { Camera } from "./Camera.js";
 import { CameraController } from "../controls/CameraController.js";
 import { createPerspectiveProjection } from "./Projection.js";
 
-/**
- * Scene
- * -----
- * Orchestriert das Rendern.
- *
- * Verantwortung:
- * - besitzt den WebGL-Kontext
- * - besitzt das Shader-Programm (programInfo)
- * - hält Drawables (GPU-Repräsentationen von Geometrie)
- * - benutzt Kamera (View-Matrix)
- * - benutzt Projektion (Projection-Matrix)
- *
- * Bewusst NICHT hier:
- * - Shader laden
- * - Shader kompilieren
- * - fetch / Dateipfade
- * - Geometrie-Erzeugung
- * - Lineare Algebra (außer Übergabe von Matrizen)
- */
 class Scene {
-    constructor(canvas, gl, programInfo, geometries) {
 
-        // -------------------------------------------------------------------------
-        // Kontext
-        // -------------------------------------------------------------------------
+    constructor(canvas, gl, programInfo) {
+
         this.canvas = canvas;
         this.gl = gl;
-
-        // -------------------------------------------------------------------------
-        // Shader-Programm (fertig übergeben!)
-        // -------------------------------------------------------------------------
         this.programInfo = programInfo;
+
         this.gl.useProgram(this.programInfo.program);
 
-        // -------------------------------------------------------------------------
-        // Kamera (View)
-        // -------------------------------------------------------------------------
         this.camera = new Camera();
-
-        // -------------------------------------------------------------------------
-        // Drawables (GPU-Objekte)
-        // -------------------------------------------------------------------------
         this.drawables = [];
-
-        if(geometries) {
-            for (const key of Object.keys(geometries)) {
-                this.drawables.push(
-                    new Drawable(this.gl, this.programInfo, geometries[key])
-                );
-            }
-        }
 
         this.controller = new CameraController(
             this.camera,
-            () => this.render()
+            () => {}   // 🔥 kein render hier mehr
         );
+
+        this.lastTime = 0;
     }
 
-    // -------------------------------------------------------------------------
-    // Add Drawables (GPU-Objekte)
-    // -------------------------------------------------------------------------
-    addGeometry(geometrie) {
-        this.drawables.push(new Drawable(this.gl, this.programInfo, geometrie));
+    addGeometry(geometry) {
+        const drawable = new Drawable(this.gl, this.programInfo, geometry);
+        this.drawables.push(drawable);
+        return drawable;
     }
 
-    // ---------------------------------------------------------------------------
-    // Render
-    // ---------------------------------------------------------------------------
+    start() {
+        const loop = (time) => {
+
+            const dt = (time - this.lastTime) * 0.001;
+            this.lastTime = time;
+
+            this.update(dt);
+            this.render();
+
+            requestAnimationFrame(loop);
+        };
+
+        requestAnimationFrame(loop);
+    }
+
+    update(dt) {
+        // hier könntest du später Animationen einbauen
+    }
+
     render() {
         const gl = this.gl;
 
-        // gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-
-        // Projektion (Frustum → Clip Space)
         const projectionMatrix = createPerspectiveProjection(gl);
-
-        // View (Welt → Kamera)
         const viewMatrix = this.camera.getViewMatrix();
 
-        // Clear
         gl.clearColor(1.0, 1.0, 1.0, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        // Draw Calls
         for (const drawable of this.drawables) {
             drawable.draw(projectionMatrix, viewMatrix);
         }
-    }
-
-    clear() {
-        // WICHTIG: logische Szene leeren (Drawables entfernen)
-        this.drawables = [];
-
-        // Bildschirm leeren (nur visuell)
-        this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
     }
 }
 
@@ -1924,6 +1521,8 @@ export function bindLinearMapView(state) {
       Vector3.js
       mat3.js
       mat4.js
+    physics/
+      PhysicsWord.js
     render/
       Camera.js
       Drawable.js

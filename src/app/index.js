@@ -1,132 +1,186 @@
 /*
-Mathematik
-  ↓
-Koordinatensystem / Vektoren / Basen
-  ↓
-GeometryBuilder (Übersetzer)
-  ↓
-Geometry (positions, colors)
-  ↓
-Model_VOB (WebGL / GPU)
-  ↓
-Shader → Pixel
+===============================================================
+INDEX.JS – EINSTIEGSPUNKT DER PHYSIK-ENGINE (3D KUGEL-SIMULATION)
+===============================================================
 
+DIESE DATEI IST DER STARTPUNKT DER GESAMTEN ANWENDUNG.
 
+Sie übernimmt folgende Aufgaben:
 
-ARCHITEKTURÜBERSICHT – MATHE / GEOMETRIE / RENDERING
+---------------------------------------------------------------
+GESAMTABLAUF – VON START BIS ANIMATION
+---------------------------------------------------------------
 
-Dieses Projekt ist bewusst didaktisch aufgebaut.
-Ziel ist nicht „Engine-Benutzung“, sondern Verstehen:
-Vektoren, Matrizen, Räume, Projektion, Pixel.
+1) Browser lädt index.js
+2) start() wird ausgeführt
+3) WebGL-Kontext wird initialisiert
+4) Shader werden geladen und kompiliert
+5) WebGL-Programm wird erzeugt
+6) Einheitskugel-Geometrie wird einmal berechnet
+7) Scene wird erzeugt
+8) Bodies (physikalische Kugeln) werden erzeugt
+9) Scene.start() startet die Game-Loop
+10) Ab jetzt läuft alles automatisch pro Frame
 
----------------------------------------------------
-1) MATHE (src/math)
----------------------------------------------------
-Hier lebt die Bedeutung.
+---------------------------------------------------------------
+DETAILIERTER ABLAUF
+---------------------------------------------------------------
 
-- Vektoren
-- Basen
-- lineare Abbildungen
-- Basiswechsel (nicht zu verwechseln mit View-Matrix, die macht auch basiswechsel aber auf Infrastruktur-Ebene, das hier ist didaktisch)
-- explizite Rechnungen
+1) CANVAS + WEBGL
+   ------------------------------------------------------------
+   - Das HTML-Canvas wird geholt.
+   - WebGL-Kontext wird erzeugt.
+   - Ohne WebGL kann nichts gerendert werden.
+   - Ab hier existiert eine Verbindung zur GPU.
 
-WICHTIG:
-Mathe weiss NICHTS von WebGL, Shadern oder Rendering.
-Mathe arbeitet nur mit Zahlen.
+2) SHADER LADEN
+   ------------------------------------------------------------
+   - Vertex-Shader und Fragment-Shader werden asynchron geladen.
+   - Diese Programme laufen später auf der GPU.
+   - Sie transformieren Vertices in Clip-Space
+     und färben Pixel.
 
----------------------------------------------------
-2) BUILDERS (src/builders)
----------------------------------------------------
-Builder sind die Brücke zwischen Mathe und Darstellung.
+   Wichtig:
+   Shader enthalten KEINE Physik.
+   Shader enthalten KEINE Spiel-Logik.
+   Shader sind reine Rechenmaschinen.
 
-Aufgabe:
-- nehmen mathematische Konzepte
-- erzeugen daraus GEOMETRIE
+3) PROGRAMM ERZEUGEN
+   ------------------------------------------------------------
+   - Die Shader werden kompiliert.
+   - Ein WebGL-Programm wird erstellt.
+   - Dieses Programm verbindet CPU-Seite mit GPU-Seite.
 
-Beispiele:
-- CoordinateSystemBuilder → Achsen aus Basis
-- CubeBuilder → Würfel aus Vektoren
-- VectorBuilder → Pfeil aus Richtungsvektor
+4) EINHEITSKUGEL ERZEUGEN
+   ------------------------------------------------------------
+   - Es wird EINE Kugel mit Radius 1 um den Ursprung gebaut.
+   - Diese Geometrie wird NIE wieder neu berechnet.
+   - Sie ist das "Template" für alle Kugeln.
 
-Builder:
-- enthalten Mathematik
-- erzeugen nur Daten
-- geben Geometry-Objekte zurück
+   Warum Einheitskugel?
+   → Jede reale Kugel wird später durch:
+        Skalierung (radius)
+        + Translation (position)
+     erzeugt.
 
-Builder machen KEIN Rendering.
+   Das ist didaktisch sauber:
+   Geometrie = konstant
+   Physik = bestimmt Lage und Größe
 
----------------------------------------------------
-3) GEOMETRY (Datenformat)
----------------------------------------------------
-Geometry ist ein reines dummes Datenobjekt:
+5) SCENE ERZEUGEN
+   ------------------------------------------------------------
+   Scene ist die zentrale Orchestrierungs-Einheit.
 
-{
-  positions: [...],
-  colors: [...],
-  primitives: "LINES",
-  num_vertices: ...
-}
+   Sie enthält:
+   - Kamera
+   - PhysicsWorld
+   - den einen Drawable-Buffer
+   - die Game-Loop
+   - Render-Funktion
 
-Geometry:
-- enthält KEINE Bedeutung
-- enthält KEINE Transformation
-- ist nur „was gezeichnet werden soll“
+   Wichtig:
+   Scene verbindet Physik und Rendering.
+   Physik kennt kein WebGL.
+   WebGL kennt keine Physik.
+   Scene ist die Brücke.
 
----------------------------------------------------
-4) RENDERING (src/render)
----------------------------------------------------
-Rendering ist Darstellung, nicht Bedeutung.
+6) BODIES ERZEUGEN
+   ------------------------------------------------------------
+   Für jede Kugel wird ein Body erzeugt:
 
-- Drawable:
-  - lädt Geometry auf die GPU
-  - führt drawArrays aus
-  - kennt keine Mathe-Bedeutung
+       {
+           position: {x,y,z}
+           velocity: {x,y,z}
+           radius
+           mass
+       }
 
-- Scene:
-  - orchestriert alles
-  - kennt Kamera & Projektion
-  - zeichnet Drawables
+   Diese Bodies sind rein physikalische Objekte.
+   Sie enthalten:
+   - Zustand
+   - Impuls
+   - Kollisionsparameter
 
-- Camera:
-  - erzeugt View-Matrix
+   PhysicsWorld speichert diese Bodies.
+   Drawable kennt diese Bodies NICHT.
 
-- Projection:
-  - erzeugt Projektionsmatrix (Frustum)
+7) SCENE.START() → GAME LOOP BEGINNT
+   ------------------------------------------------------------
+   requestAnimationFrame startet eine Endlosschleife.
 
-Rendering rechnet NICHT an der Geometrie.
-Es zeigt nur das Ergebnis.
+   Pro Frame passiert:
 
----------------------------------------------------
-5) SHADER (src/shaders)
----------------------------------------------------
-Shader sind Ausführungsmaschinen.
+   a) dt wird berechnet (Zeit seit letztem Frame)
+   b) physics.update(dt)
+        → Bewegung (Euler)
+        → Kugel-Kugel-Kollision
+   c) Wandkollision wird berechnet
+   d) Alle Kugeln werden in EIN großes Vertex-Array geschrieben
+   e) Drawable.updatePositions(...)
+        → GPU-Buffer wird neu befüllt
+   f) render()
+        → drawArrays wird ausgeführt
 
-- nehmen Matrizen
-- wenden sie auf Vertices an
-- keine Logik, keine Bedeutung
+   Dieser Ablauf wiederholt sich 60x pro Sekunde.
 
-Shader sind absichtlich „dumm“.
+---------------------------------------------------------------
+ARCHITEKTUR-PRINZIPIEN DIE HIER GELTEN
+---------------------------------------------------------------
 
----------------------------------------------------
-6) WICHTIGE DESIGNENTSCHEIDUNG
----------------------------------------------------
-Dieses Projekt verzichtet bewusst auf Model-Matrizen (diejenigen die das Objekt selber drehen, nicht die Welt.)
-in frühen Phasen.
+1) KEIN GLOBALER STATE
+   Keine reaktive Mathe-Struktur mehr.
+   Physik läuft zeitbasiert.
 
-Stattdessen:
-- Geometrie wird explizit transformiert
-- jede Zahl ist sichtbar
-- jede Rechnung nachvollziehbar
+2) EIN DRAW CALL
+   Alle Kugeln werden in EINEM Buffer gerendert.
+   Das ist effizienter als viele DrawCalls.
 
+3) CPU-SKALIERUNG
+   Radius wird auf CPU angewendet.
+   Keine Model-Matrix.
+   Keine Instancing-Technik.
+   Alles explizit sichtbar.
 
----------------------------------------------------
-MERKSATZ
----------------------------------------------------
-Mathe erklärt.
-Builder formen.
-Rendering zeigt.
-Shader führen aus.
+4) SAUBERE TRENNUNG
 
+   PhysicsWorld
+       ↓
+   Scene.update()
+       ↓
+   Drawable.updatePositions()
+       ↓
+   render()
+
+---------------------------------------------------------------
+WICHTIGE DIDAKTISCHE ENTSCHEIDUNG
+---------------------------------------------------------------
+
+Diese Version verzichtet bewusst auf:
+
+- Model-Matrizen
+- Instanced Rendering
+- GPU-Transformation pro Objekt
+- Engine-Abstraktionen
+
+Warum?
+
+Weil hier jede Zahl sichtbar bleibt.
+Jede Transformation ist explizit.
+Jede Kollision ist nachvollziehbar.
+
+Das Ziel ist Verstehen, nicht Engine-Optimierung.
+
+---------------------------------------------------------------
+FAZIT
+---------------------------------------------------------------
+
+index.js ist NICHT die Physik.
+index.js ist NICHT das Rendering.
+index.js ist nur der Start und die Initialisierung.
+
+Ab Scene.start() läuft alles autonom.
+
+===============================================================
 */
 
 
@@ -134,105 +188,70 @@ Shader führen aus.
 "use strict";
 
 import { WorldConfig } from "../config.js";
-import { Matrix3 } from "../math/Matrix3.js";
-import { MathState } from "../state/MathState.js";
 import { loadText } from "../loaders/loadText.js";
 import { createProgram } from "../gl/createProgram.js";
-import { bindLinearMapView } from "../ui/LinearMapView.js";
-import { CoordinateSystemBuilder } from "../builders/CoordinateSystemBuilder.js";
+import { Drawable } from "../render/Drawable.js";
 import { CubeWireframeBuilder } from "../builders/CubeWireframeBuilder.js";
-import { VectorBuilder } from "../builders/VectorBuilder.js";
-import { loadExperiment } from "../experiments/loadExperiment.js";
 import { Scene } from "../render/Scene.js";
 
 
 async function start() {
 
-	// 1) Canvas + WebGL
 	const canvas = document.querySelector("#meineWebGLCanvas");
-	const gl = canvas.getContext("webgl");
-	if (!gl) {
-		alert("WebGL nicht verfügbar");
-		return;
-	}
+    const gl = canvas.getContext("webgl");
 
+    const [vShaderCode, fShaderCode] = await Promise.all([
+        loadText("/src/shaders/vShaderCode.glsl"),
+        loadText("/src/shaders/fShaderCode.glsl"),
+    ]);
 
-	// 2) Shader laden
-	const [vShaderCode, fShaderCode] = await Promise.all([
-		loadText("/src/shaders/vShaderCode.glsl"),
-		loadText("/src/shaders/fShaderCode.glsl"),
-	]);
+    const programInfo = createProgram(gl, vShaderCode, fShaderCode);
+    gl.useProgram(programInfo.program);
 
+    const unitSphere = buildUnitSphere(16, 16);
 
-	const programInfo = createProgram(gl, vShaderCode, fShaderCode);
-	gl.useProgram(programInfo.program);
-
-
-	// 3) Scene
-	const scene = new Scene(
-		canvas, 
-		gl,
-		programInfo
-		/* 
-		{
-			axes: CoordinateSystemBuilder.build(basisA, 1.0), 
-			cube: CubeWireframeBuilder.build(1.0)
-		}
-		*/
-	);
-
-	
-	// 4) State (Wahrheit)
-	const state = new MathState();
-
-	// 5) UI an State binden (nur lesen)
-	bindLinearMapView(state);
-
-	
-	// Geometrie einmal erstellen
-	this.cube = cube = scene.addGeometry(
-		CubeWireframeBuilder.build(WorldConfig.EXTENT)
-	);
-
-	let vectorDrawable = null;
-	let resultDrawable = null;
-
-	// 6) Rendering an State binden (nur lesen)
-	state.onChange((s) => {
-
-		if (s.vector && !vectorDrawable) {
-			vectorDrawable = scene.addGeometry(
-				VectorBuilder.build(s.vector, { color: [1,0,0,1] })
-			);
-		}
-
-		if (s.resultVector && !resultDrawable) {
-			resultDrawable = scene.addGeometry(
-				VectorBuilder.build(s.resultVector, { color: [0,1,0,1] })
-			);
-		}
-
-		if (vectorDrawable) {
-			vectorDrawable.updatePositions([
-				0,0,0,
-				s.vector.x,
-				s.vector.y,
-				s.vector.z
-			]);
-		}
-
-		if (resultDrawable) {
-			resultDrawable.updatePositions([
-				0,0,0,
-				s.resultVector.x,
-				s.resultVector.y,
-				s.resultVector.z
-			]);
-		}
+	const sphereDrawable = new Drawable(gl, programInfo, {
+		positions: []
 	});
 
-	// 7) Starten
-	scene.start();
+	const cubeGeometry = CubeWireframeBuilder.build(WorldConfig.EXTENT);
+	const cubeDrawable = new Drawable(gl, programInfo, cubeGeometry);
+
+    const scene = new Scene(
+		canvas,
+		gl,
+		programInfo,
+		unitSphere
+	);
+
+	scene.addStaticDrawable(cubeDrawable);
+	scene.addDynamicDrawable(sphereDrawable);
+
+	const density = 7.850; // Also angenommen Einheiten seien cm
+	
+    // --- Bodies ---
+    for (let i = 0; i < 6; i++) {
+
+        const radius = 0.5 + Math.random();
+		const mass = density * (4 / 3) * Math.PI * Math.pow(radius, 3);
+
+        scene.addBody({
+            position: {
+                x: (Math.random() - 0.5) * 8,
+                y: (Math.random() - 0.5) * 8,
+                z: (Math.random() - 0.5) * 8
+            },
+            velocity: {
+                x: (Math.random() - 0.5) * 4,
+                y: (Math.random() - 0.5) * 4,
+                z: (Math.random() - 0.5) * 4
+            },
+            radius: radius,
+            mass: mass
+        });
+    }
+
+    scene.start();
 }
 
 
