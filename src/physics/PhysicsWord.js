@@ -2,7 +2,9 @@
 
 export class PhysicsWorld {
 
-	constructor() {
+	constructor(extent) {
+
+		this.extent = extent;
 
 		// Typische Werte für Restitution:
 
