@@ -192,6 +192,7 @@ import { loadText } from "../loaders/loadText.js";
 import { createProgram } from "../gl/createProgram.js";
 import { Drawable } from "../render/Drawable.js";
 import { CubeWireframeBuilder } from "../builders/CubeWireframeBuilder.js";
+import { buildUnitSphere } from "../builders/UnitSphereBuilder.js";
 import { Scene } from "../render/Scene.js";
 
 
@@ -226,6 +227,9 @@ async function start() {
 
 	scene.addStaticDrawable(cubeDrawable);
 	scene.addDynamicDrawable(sphereDrawable);
+
+    document.getElementById("startBtn").addEventListener("click", () => scene.start());
+    document.getElementById("stopBtn").addEventListener("click", () => scene.stop());
 
 	const density = 7.850; // Also angenommen Einheiten seien cm
 	

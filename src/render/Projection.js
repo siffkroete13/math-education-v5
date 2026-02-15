@@ -105,7 +105,7 @@ function createPerspectiveProjection(gl) {
     */
 
     // Dies ist die komplette Projektions-Matrix (Perspective-Projextion-Matrix). Alle Koordinaten der Vertices im Frustum werden richtig
-    // in den Bereich von -1 zu 1 projeziert. Auch die Tatsache, dass aspect ration nicht gleich 1 ist wird beachtet durch diese Matrix.
+    // in den Bereich von -1 zu 1 projeziert. Auch die Tatsache, dass aspect ratio nicht gleich 1 ist wird beachtet durch diese Matrix.
     // Auch die z-Koordinaten werden zwischen -1 und 1 projeziert (für allfälliges weg clippen oder so).
     // Anfangs dachte ich, dass was fehlt, z.B. die Zentrierung von apex (Kamera) oder so. Aber diese Funktion ist nur für für zentrierte 
     // Kamera zugelassen.
@@ -115,16 +115,16 @@ function createPerspectiveProjection(gl) {
     const projectionMatrix = [
 
         // Spalte 0
-        1.0 / (aspect * Math.tan(angle)),  0.0,  0.0,   0.0,
+        1.0 / (aspect * Math.tan(angle)),               0.0,                           0.0,                                         0.0,
 
         // Spalte 1
-        0.0,  1.0 / Math.tan(angle),        0.0,   0.0,
+        0.0,                                            1.0 / Math.tan(angle),          0.0,                                        0.0,
 
         // Spalte 2
-        0.0,  0.0,  (zFar + zNear) / (zNear - zFar),  -1.0,
+        0.0,                                            0.0,                            (zFar + zNear) / (zNear - zFar),            -1.0,
 
         // Spalte 3
-        0.0,  0.0,  (2 * zFar * zNear) / (zNear - zFar),  0.0
+        0.0,                                            0.0,                            (2 * zFar * zNear) / (zNear - zFar),         0.0
     ];
 
     return projectionMatrix;

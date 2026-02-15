@@ -18,6 +18,10 @@ class Drawable {
         this.vertexCount =
             geometry.num_vertices ??
             (geometry.positions.length / geometry.num_dim);
+        
+        
+        this.numDim = geometry.num_dim ?? 3;
+        this.numColor = geometry.num_color ?? 3;
 
         this.initBuffers();
     }
@@ -51,12 +55,13 @@ class Drawable {
         const gl = this.gl;
 
         this.geometry.positions = newPositions;
+        this.vertexCount = newPositions.length / 3;
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-        gl.bufferSubData(
+        gl.bufferData(
             gl.ARRAY_BUFFER,
-            0,
-            new Float32Array(newPositions)
+            new Float32Array(newPositions),
+            gl.DYNAMIC_DRAW
         );
     }
 
@@ -80,7 +85,7 @@ class Drawable {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
         gl.vertexAttribPointer(
             prog.attribLocations.vertexPosition,
-            this.geometry.num_dim,
+            this.numDim,
             gl.FLOAT,
             false,
             0,
@@ -96,7 +101,7 @@ class Drawable {
             gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
             gl.vertexAttribPointer(
                 prog.attribLocations.vertexColor,
-                this.geometry.num_color,
+                this.numColor,
                 gl.FLOAT,
                 false,
                 0,

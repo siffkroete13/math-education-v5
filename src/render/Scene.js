@@ -47,10 +47,13 @@ class Scene {
         this.dynamicDrawables = [];
 
         this.lastTime = 0;
+
+        this.isRunning = false;
+        this.animationId = null;
     }
 
     addBody(body) {
-        this.physics.add(body);
+        this.physics.addBody(body);
     }
 
     addStaticDrawable(d) {
@@ -63,7 +66,13 @@ class Scene {
 
     start() {
 
+        if (this.isRunning) return; // verhindert doppelte Loops
+
+        this.isRunning = true;
+
         const loop = (time) => {
+
+            if (!this.isRunning) return;
 
             const dt = (time - this.lastTime) * 0.001;
             this.lastTime = time;
@@ -71,13 +80,25 @@ class Scene {
             this.update(dt);
             this.render();
 
-            requestAnimationFrame(loop);
+            this.animationId = requestAnimationFrame(loop);
         };
 
-        requestAnimationFrame(loop);
+        this.animationId = requestAnimationFrame(loop);
+    }
+
+    stop() {
+
+        this.isRunning = false;
+
+        if (this.animationId !== null) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
     }
 
     update(dt) {
+        // console.log("Bodies:", this.physics.bodies.length);
+       
 
         this.physics.update(dt);
 
@@ -99,9 +120,13 @@ class Scene {
             }
         }
 
+        // console.log("Vertices:", positions.length);
+
         // wir haben nur EIN dynamic drawable
         if (this.dynamicDrawables.length > 0) {
-            this.dynamicDrawables[0].updatePositions(positions);
+            for(let i = 0; i < this.dynamicDrawables.length; ++i) {
+                this.dynamicDrawables[i].updatePositions(positions);
+            }
         }
     }
 
@@ -116,8 +141,17 @@ class Scene {
         gl.enable(gl.DEPTH_TEST);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        this.cubeDrawable.draw(projectionMatrix, viewMatrix);
-        this.sphereDrawable.draw(projectionMatrix, viewMatrix);
+        if (this.staticDrawables.length > 0) {
+            for(let i = 0; i < this.dynamicDrawables.length; ++i) {
+                this.dynamicDrawables[i].draw(projectionMatrix, viewMatrix);
+            }
+        }
+
+        if (this.dynamicDrawables.length > 0) {
+            for(let i = 0; i < this.dynamicDrawables.length; ++i) {
+                this.staticDrawables[i].draw(projectionMatrix, viewMatrix);
+            }
+        }
     }
 }
 

@@ -20,14 +20,14 @@ export class PhysicsWorld {
 		this.bodies = [];
 	}
 
-	add(body) {
+	addBody(body) {
 		this.bodies.push(body);
 	}
 
 	update(dt) {
-		integrate(dt);
-		resolveSphereSphere();
-		resolveWorldBounds();
+		this.integrate(dt);
+		this.resolveSphereSphere();
+		this.resolveWorldBounds();
 	}
 
 	resolveSphereSphere() {
